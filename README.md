@@ -1,4 +1,4 @@
-# Metodologia Geoespacial de Detecção, Triagem e Priorização de Focos de Erosão Laminar (Paraná & Bacia do Paraná 3)
+# Metodologia Geoespacial de Triagem e Priorização de Possíveis Focos de Erosão Laminar (Paraná & Bacia do Paraná 3)
 
 ### Programa de Pós-Graduação em Tecnologias Computacionais para o Agronegócio (PPGTCA - 2026)
 **Linha de Pesquisa:** Sensoriamento Remoto, Inteligência Geoespacial e Conservação de Solos  
