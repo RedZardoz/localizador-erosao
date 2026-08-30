@@ -1,14 +1,16 @@
 {
-  "name": "localizador-erosao-parana",
+  "name": "localizador-erosao-laminar",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@google/earthengine": "^1.7.41",
     "@tmcw/togeojson": "^5.8.1",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
@@ -20,6 +22,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.4",
+    "xmlhttprequest": "^1.8.0",
     "zod": "^3.23.8",
     "zustand": "^5.0.1"
   },
@@ -29,9 +32,12 @@
     "@types/papaparse": "^5.3.14",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.11"
   }
 }

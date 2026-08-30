@@ -1,4 +1,4 @@
-# Metodologia Geoespacial de Triagem e Priorização de Possíveis Focos de Erosão Laminar (Paraná & Bacia do Paraná 3)
+# Metodologia Geoespacial de Detecção, Triagem e Priorização de Focos de Erosão Laminar
 
 ### Programa de Pós-Graduação em Tecnologias Computacionais para o Agronegócio (PPGTCA - 2026)
 **Linha de Pesquisa:** Sensoriamento Remoto, Inteligência Geoespacial e Conservação de Solos  
@@ -18,6 +18,15 @@ Este projeto estabelece um método científico estruturado para **detecção, tr
 5. **Amostragem Estratificada e Validação em Campo** com GNSS Geodésico (RTK) e VANTs Multiespectrais.
 
 A plataforma web atua como o ambiente de **análise exploratória, visualização 2D/3D e triagem amostral** para seleção dos talhões-piloto e geração de diagnósticos espaciais no Estado do Paraná (com ênfase na região Noroeste/Arenito Caiuá, Bacia do Rio Tibagi, Rio Ivaí e Bacia Hidrográfica do Paraná 3).
+
+> **Estado da Implementação e Recursos Ativos:**
+> 1. **Seleção e Triagem Automática via Google Earth Engine:** A aplicação seleciona candidatos amostrais reais a partir de qualquer AOI (limites municipais do IBGE ou polígonos GeoJSON/KML customizados) combinando **Máscara de Elegibilidade 10m** (ESA WorldCover v200 + Copernicus DEM GLO-30 + JRC Global Surface Water), **Estratificação Cruzada A1..B3** e **Thinning Espacial** com raio configurável.
+> 2. **Cálculo Físico de Variáveis Biofísicas:** Executa o cálculo de BSI/NDVI (Sentinel-2 Harmonized L2A), declividade e elevação (Copernicus DEM com projeção métrica EPSG:3857), erosividade da chuva (NASA POWER + eq. Lombardi Neto) e Fator K/LS sob demanda.
+> 3. **Segurança de Credenciais:** A autenticação com a Service Account do GEE cria uma sessão criptografada no servidor via cookie `httpOnly`, nunca persistindo a chave privada RSA no `localStorage` do navegador e nem no repositório.
+> 4. **Coleções e Projetos Salvos:** Permite salvar seleções ativas no navegador, recarregar instantaneamente com enquadramento 3D automático, ou exportar/importar arquivos de projeto `.json`.
+> 5. **Ciclo de Validação de Campo (KoboToolbox):** Importa dados de campo do KoboToolbox, casa registros por proximidade/código, marca como `field-validated` e exporta o dataset rotulado para futuro treinamento do XGBoost/SHAP.
+> 
+> Detalhes técnicos completos estão documentados em [`RELATORIO_IMPLEMENTACAO.md`](./RELATORIO_IMPLEMENTACAO.md).
 
 ---
 
@@ -336,26 +345,37 @@ A ferramenta foi projetada para oferecer uma experiência de Sistema de Informa�
    - Transição cinematográfica *"Fly-to"* com ajuste dinâmico de *pitch* ($62^\circ$) e *bearing* para inspeção morfométrica tridimensional;
    - Camada de calor (*Heatmap*) ponderada pelo Score de Prioridade e Índice BSI.
 
-2. **Mecanismo Dinâmico de Triagem Top-N:**
+2. **Seleção e Triagem de Candidatos via Earth Engine:**
+   - **Máscara de Elegibilidade 10m:** Combina ESA WorldCover v200 (classes 30, 40, 60), Copernicus DEM GLO-30 (declividade parametrizada 3%–20%) e JRC Global Surface Water (buffer de exclusão hídrica de 30m);
+   - **Estratificação Cruzada 2x3:** Classes de relevo ($\le 6\%$, $6\%-12\%$, $>12\%$) $\times$ Grupos Pedológicos (A e B) gerando sub-estratos A1..B3;
+   - **Thinning Espacial Geodésico:** Algoritmo de filtragem por distância mínima de Haversine (0.2 a 5.0 km), priorizando candidatos com maior Score de Prioridade.
+
+3. **Mecanismo Dinâmico de Triagem Top-N & Inspeção:**
    - Seletor contínuo e botões pré-definidos (Top 10, Top 25, Top 50, Top 100, Todas) que filtram e ordenam instantaneamente as ocorrências mais críticas;
-   - Recorte espacial automático por upload de polígonos de Área de Interesse (**AOI** via GeoJSON/KML);
-   - Filtros combinados por intervalo de declividade, amplitude de BSI, bacias hidrográficas e classes pedológicas.
+   - Tabela de dados detalhada do ponto (coordenadas WGS84 e DMS, altitude, declividade, BSI, perda de solo RUSLE, estrato, pedologia e bacia hidrográfica);
+   - Recorte espacial automático por upload de polígonos de Área de Interesse (**AOI** via GeoJSON/KML) ou seleção de municípios oficiais do IBGE.
 
-3. **Ingestão e Interoperabilidade de Dados:**
-   - Suporte a credenciais de Service Account do **Google Earth Engine (GEE)** via upload de `credentials.json` e teste automatizado de rota `/api/auth/gee-test`;
-   - Dropzone universal com auto-detecção de arquivos **GeoJSON**, **KML**, **KMZ** (descompactação zip in-memory via JSZip) e planilhas **CSV** com coordenadas geográficas.
+4. **Coleções & Projetos Salvos (Persistência Local):**
+   - Salva seleções de focos de campo no navegador com nomes e descrições personalizadas;
+   - Recarregamento instantâneo no mapa com voo 3D de enquadramento automático;
+   - Exportação e importação de arquivos de projeto `.json` portáteis.
 
-4. **Exportação de Dados Científicos:**
+5. **Ingestão e Validação de Campo (KoboToolbox):**
+   - Importação de dados de campo do KoboToolbox com pareamento por código ou proximidade espacial (< 150m);
+   - Dropzone universal com auto-detecção de arquivos **GeoJSON**, **KML**, **KMZ** e planilhas **CSV** com coordenadas geográficas.
+
+6. **Exportação de Dados Científicos:**
    - **GeoJSON:** Formato padrão OGC com geometria e tabela de atributos completa para QGIS e ArcGIS Pro;
    - **KML 3D:** Estrutura com estilos de ícones, elevação e tabelas formatadas em HTML para visualização imersiva no Google Earth Pro / Web;
-   - **CSV Científico:** Planilha contendo coordenadas em Graus Decimais (DD) e Graus-Minutos-Segundos (DMS), com todas as variáveis numéricas para modelagem estatística em R e Python.
+   - **CSV Científico:** Planilha contendo coordenadas em Graus Decimais (DD) e Graus-Minutos-Segundos (DMS), com todas as variáveis numéricas para modelagem estatística em R e Python;
+   - **Dataset de Treinamento (XGBoost):** Exportação dedicada contendo apenas pontos validados em campo com observações e fatores biofísicos.
 
 ---
 
 ## 7. Instalação e Execução da Plataforma
 
 ### Pré-requisitos
-- **Node.js**: versão 18.17.0 ou superior
+- **Node.js**: versão 18.17.0 ou superior (Node 20+ recomendado)
 - **npm** ou **yarn** / **pnpm**
 
 ```bash
@@ -367,14 +387,21 @@ cd localizador-erosao-parana
 npm install
 
 # 3. (Opcional) Configurar variáveis de ambiente
-# A aplicação funciona 100% no modo padrão sem chaves adicionais.
-# Se desejar configurar GEE, Mapbox ou Google Maps, veja: GUIA_CONFIGURACAO_CREDENCIAIS.md
+# A aplicação funciona 100% no modo padrão sem nenhuma chave obrigatória.
+# As credenciais da Service Account do GEE são enviadas com segurança pela própria interface web.
 cp .env.example .env.local
 
-# 4. Executar o servidor de desenvolvimento
+# 4. Executar os testes automatizados (Vitest)
+npm run test
+
+# 5. Executar o servidor de desenvolvimento
 npm run dev
 
-# 5. Acessar a aplicação no navegador
+# 6. Gerar o build de produção otimizado (opcional)
+npm run build
+npm run start
+
+# 7. Acessar a aplicação no navegador
 http://localhost:3000
 ```
 
