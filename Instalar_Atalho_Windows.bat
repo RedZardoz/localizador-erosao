@@ -1,0 +1,19 @@
+@echo off
+chcp 65001 > nul
+title Instalador do Localizador de Erosao Laminar - Windows
+
+echo ===============================================================================
+echo     INSTALADOR - LOCALIZADOR DE EROSAO LAMINAR (MESTRADO PPGTCA 2026)
+echo ===============================================================================
+echo.
+
+cd /d "%~dp0"
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\install_shortcut.ps1"
+
+echo.
+echo ===============================================================================
+echo Voce ja pode iniciar o aplicativo dando duplo clique no icone na Area de Trabalho!
+echo ===============================================================================
+echo.
+pause

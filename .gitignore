@@ -28,6 +28,9 @@ tsconfig.tsbuildinfo
 *service_account*.json
 gcp-key*.json
 google-key*.json
+minhas_chaves_locais/
+credentials/
+chaves/
 
 # Debug and Logs
 npm-debug.log*

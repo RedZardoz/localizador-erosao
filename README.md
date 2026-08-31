@@ -26,7 +26,7 @@ A plataforma web atua como o ambiente de **análise exploratória, visualizaçã
 > 4. **Coleções e Projetos Salvos:** Permite salvar seleções ativas no navegador, recarregar instantaneamente com enquadramento 3D automático, ou exportar/importar arquivos de projeto `.json`.
 > 5. **Ciclo de Validação de Campo (KoboToolbox):** Importa dados de campo do KoboToolbox, casa registros por proximidade/código, marca como `field-validated` e exporta o dataset rotulado para futuro treinamento do XGBoost/SHAP.
 > 
-> Detalhes técnicos completos estão documentados em [`RELATORIO_IMPLEMENTACAO.md`](./RELATORIO_IMPLEMENTACAO.md).
+> Detalhes técnicos e o mapeamento completo das funções e servidores estão documentados em [`MAPA_DOCUMENTACAO_CALCULOS.md`](./MAPA_DOCUMENTACAO_CALCULOS.md) e [`RELATORIO_IMPLEMENTACAO.md`](./RELATORIO_IMPLEMENTACAO.md).
 
 ---
 
