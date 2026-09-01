@@ -1,20 +1,34 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import {
   AOIPolygon,
+  DrawnPolygon,
   ErosionPoint,
   FilterState,
   GcpCredentials,
   NewRegionRequest,
   RegionPreset,
+  SavedPointDataset,
   SeverityLevel,
+  SystemLog,
 } from "@/types/erosion";
-import { mockErosionPoints } from "@/data/mockErosionPoints";
+import { generate150MockErosionPoints, mockErosionPoints } from "@/data/mockErosionPoints";
 import { regionPresets } from "@/data/regionsData";
 import { isPointInGeoJSON } from "../utils/geoUtils";
 
-export type ModalType = "settings" | "region" | "export" | null;
-export type BasemapType = "satellite" | "topo" | "dark" | "hybrid";
+export type ModalType =
+  | "settings"
+  | "region"
+  | "export"
+  | "candidates"
+  | "saved-datasets"
+  | "polygons"
+  | "data-manager"
+  | "diagnostics"
+  | "audit-dossier"
+  | null;
+export type BasemapType = "satellite" | "mapbox-hd" | "topo" | "dark" | "hybrid";
 
 interface MapViewState {
   basemap: BasemapType;
@@ -38,10 +52,25 @@ interface ErosionStoreState {
   allPoints: ErosionPoint[];
   dataSource: "mock" | "custom";
   customPoints: ErosionPoint[];
+  // Geração atual dos 150 pontos de demonstração (pode ser recarregada pelo
+  // usuário via `regenerateMockPoints` — ver botão "Recarregar Seleção").
+  currentMockPoints: ErosionPoint[];
   selectedPoint: ErosionPoint | null;
   activeRegion: RegionPreset;
   activeAOIPolygon: AOIPolygon | null;
   regionRequests: NewRegionRequest[];
+
+  // Saved Datasets / Projetos Salvos
+  savedDatasets: SavedPointDataset[];
+
+  // Drawn Polygons & Talhões Delimitados
+  drawnPolygons: DrawnPolygon[];
+  selectedPolygon: DrawnPolygon | null;
+  activeDrawingMode: boolean;
+  drawingPoints: [number, number][];
+
+  // Logs e Diagnósticos do Sistema
+  systemLogs: SystemLog[];
 
   // Filters
   filters: FilterState;
@@ -54,19 +83,50 @@ interface ErosionStoreState {
   mapboxToken: string;
   googleMapsKey: string;
   credentialPersistMode: "session" | "local";
+  // Sessão do Earth Engine no SERVIDOR (cookie httpOnly) — fonte de verdade de
+  // se os cálculos reais estão disponíveis, não a presença de private_key no
+  // cliente (que nunca mais é reenviada após a sessão ser criada).
+  geeSessionActive: boolean;
 
   // UI Modals & Theme
   activeModal: ModalType;
+  auditDossierPoint: ErosionPoint | null;
   sidebarCollapsed: boolean;
   theme: "dark" | "light";
 
   // Actions
   setDataSource: (source: "mock" | "custom") => void;
   setCustomPoints: (points: ErosionPoint[]) => void;
+  applyCandidatePoints: (candidates: ErosionPoint[], replace?: boolean) => void;
   setSelectedPoint: (point: ErosionPoint | null) => void;
+  updatePointWithRealData: (pointId: string, patch: Partial<ErosionPoint>) => void;
+  replacePoint: (oldPointId: string, newPoint: ErosionPoint) => void;
+  removePoint: (pointId: string) => void;
+  regenerateMockPoints: () => void;
+  clearMap: () => void;
   setActiveRegion: (regionId: string) => void;
   setActiveAOIPolygon: (polygon: AOIPolygon | null) => void;
   addRegionRequest: (request: NewRegionRequest) => void;
+
+  // Saved Datasets actions
+  saveDataset: (name: string, description?: string) => string;
+  loadDataset: (datasetId: string) => void;
+  deleteDataset: (datasetId: string) => void;
+  importDataset: (dataset: SavedPointDataset) => void;
+
+  // Drawn Polygons & Talhões actions
+  addDrawnPolygon: (polygon: DrawnPolygon) => void;
+  updateDrawnPolygon: (id: string, patch: Partial<DrawnPolygon>) => void;
+  removeDrawnPolygon: (id: string) => void;
+  clearDrawnPolygons: () => void;
+  setSelectedPolygon: (polygon: DrawnPolygon | null) => void;
+  setDrawingMode: (active: boolean) => void;
+  setDrawingPoints: (points: [number, number][]) => void;
+  addDrawingPoint: (point: [number, number]) => void;
+
+  // System Logs actions
+  addSystemLog: (log: Omit<SystemLog, "id" | "timestamp">) => void;
+  clearSystemLogs: () => void;
 
   // Theme actions
   setTheme: (theme: "dark" | "light") => void;
@@ -95,9 +155,12 @@ interface ErosionStoreState {
   setMapboxToken: (token: string) => void;
   setGoogleMapsKey: (key: string) => void;
   setCredentialPersistMode: (mode: "session" | "local") => void;
+  setGeeSessionActive: (active: boolean) => void;
 
   // UI actions
   setActiveModal: (modal: ModalType) => void;
+  openAuditDossier: (point: ErosionPoint) => void;
+  closeAuditDossier: () => void;
   toggleSidebar: () => void;
 
   // Computed helper
@@ -122,14 +185,33 @@ const initialFilters: FilterState = {
 export const useErosionStore = create<ErosionStoreState>()(
   persist(
     (set, get) => ({
-      // Data state
-      allPoints: mockErosionPoints,
-      dataSource: "mock",
+      // Data state (Tela limpa por padrão - pontos adicionados após GEE ou importação)
+      allPoints: [],
+      dataSource: "custom",
       customPoints: [],
+      currentMockPoints: [],
       selectedPoint: null,
       activeRegion: regionPresets[0],
       activeAOIPolygon: null,
       regionRequests: [],
+      savedDatasets: [],
+
+      // Drawn Polygons & Talhões Delimitados
+      drawnPolygons: [],
+      selectedPolygon: null,
+      activeDrawingMode: false,
+      drawingPoints: [],
+
+      // System Logs & Diagnóstico
+      systemLogs: [
+        {
+          id: "log-system-init",
+          timestamp: new Date().toISOString(),
+          severity: "info",
+          category: "Sistema",
+          message: "Localizador de Erosão inicializado com sucesso.",
+        },
+      ],
 
       // Filters
       filters: initialFilters,
@@ -147,12 +229,14 @@ export const useErosionStore = create<ErosionStoreState>()(
 
       // Credentials
       gcpCredentials: null,
-      mapboxToken: "",
-      googleMapsKey: "",
+      mapboxToken: process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "",
+      googleMapsKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "",
       credentialPersistMode: "local",
+      geeSessionActive: false,
 
       // UI
       activeModal: null,
+      auditDossierPoint: null,
       sidebarCollapsed: false,
       theme: "dark",
 
@@ -160,7 +244,7 @@ export const useErosionStore = create<ErosionStoreState>()(
       setDataSource: (source) =>
         set((state) => ({
           dataSource: source,
-          allPoints: source === "mock" ? mockErosionPoints : state.customPoints,
+          allPoints: source === "mock" ? state.currentMockPoints : state.customPoints,
           selectedPoint: null,
         })),
 
@@ -172,7 +256,185 @@ export const useErosionStore = create<ErosionStoreState>()(
           selectedPoint: null,
         }),
 
+      applyCandidatePoints: (candidates, replace = true) =>
+        set((state) => {
+          let nextPoints: ErosionPoint[] = [];
+
+          if (replace) {
+            nextPoints = candidates;
+          } else {
+            // Encontra o maior número sequencial existente para dar continuidade exata à numeração
+            let maxSeq = 0;
+            const existingCodes = new Set<string>();
+            const existingCoordKeys = new Set<string>();
+
+            for (const p of state.customPoints) {
+              existingCodes.add(p.code);
+              // Chave de coordenadas com 4 casas decimais (~11m) para evitar sobreposição duplicada idêntica
+              existingCoordKeys.add(`${p.latitude.toFixed(4)},${p.longitude.toFixed(4)}`);
+
+              const match = p.code.match(/(\d+)$/);
+              if (match) {
+                const n = parseInt(match[1], 10);
+                if (!isNaN(n) && n > maxSeq) {
+                  maxSeq = n;
+                }
+              }
+            }
+
+            if (maxSeq === 0) {
+              maxSeq = state.customPoints.length;
+            }
+
+            // Sequencia os novos pontos garantindo códigos e IDs únicos
+            let currentSeq = maxSeq;
+            const resequenced: ErosionPoint[] = [];
+
+            for (let i = 0; i < candidates.length; i++) {
+              const cand = candidates[i];
+              const coordKey = `${cand.latitude.toFixed(4)},${cand.longitude.toFixed(4)}`;
+              // Se já existir exatamente neste ponto geográfico, pula para não duplicar
+              if (existingCoordKeys.has(coordKey)) {
+                continue;
+              }
+              existingCoordKeys.add(coordKey);
+
+              currentSeq += 1;
+              const paddedNum = String(currentSeq).padStart(3, "0");
+              const statePrefix = cand.state || "PR";
+              let newCode = `${statePrefix}-CAND-${paddedNum}`;
+
+              while (existingCodes.has(newCode)) {
+                currentSeq += 1;
+                newCode = `${statePrefix}-CAND-${String(currentSeq).padStart(3, "0")}`;
+              }
+              existingCodes.add(newCode);
+
+              const newId = `CAND-${statePrefix}-${Date.now()}-${i}-${paddedNum}`;
+              const municipalityName = cand.municipality || "Paraná";
+
+              resequenced.push({
+                ...cand,
+                id: newId,
+                code: newCode,
+                name: `Candidato ${paddedNum} - ${municipalityName}`,
+              });
+            }
+
+            nextPoints = [...state.customPoints, ...resequenced];
+          }
+
+          return {
+            customPoints: nextPoints,
+            allPoints: nextPoints,
+            dataSource: "custom",
+            selectedPoint: null,
+            filters: {
+              ...state.filters,
+              searchQuery: "",
+              selectedWatersheds: [],
+              minSlope: 0,
+              maxSlope: 100,
+              minBsi: -1.0,
+              maxBsi: 1.0,
+              selectedSeverities: ["Moderada", "Alta", "Crítica"],
+              topN: Math.max(state.filters.topN, nextPoints.length, 500),
+            },
+          };
+        }),
+
       setSelectedPoint: (point) => set({ selectedPoint: point }),
+
+      updatePointWithRealData: (pointId, patch) =>
+        set((state) => {
+          const applyPatch = (points: ErosionPoint[]) =>
+            points.map((pt) => (pt.id === pointId ? { ...pt, ...patch } : pt));
+
+          const nextAllPoints = applyPatch(state.allPoints);
+          const nextCustomPoints = state.dataSource === "custom" ? applyPatch(state.customPoints) : state.customPoints;
+
+          return {
+            allPoints: nextAllPoints,
+            customPoints: nextCustomPoints,
+            selectedPoint:
+              state.selectedPoint?.id === pointId ? { ...state.selectedPoint, ...patch } : state.selectedPoint,
+          };
+        }),
+
+      // Substitui um ponto anulado por um novo candidato re-eleito,
+      // garantindo que ele assuma a mesma posição e identificação.
+      replacePoint: (oldPointId, newPoint) =>
+        set((state) => {
+          const replaceInArray = (list: ErosionPoint[]) =>
+            list.map((p) =>
+              p.id === oldPointId || p.code === newPoint.code ? newPoint : p
+            );
+
+          const nextAllPoints = replaceInArray(state.allPoints);
+          const nextCustomPoints =
+            state.dataSource === "custom"
+              ? replaceInArray(state.customPoints)
+              : state.customPoints;
+
+          return {
+            allPoints: nextAllPoints,
+            customPoints: nextCustomPoints,
+            selectedPoint: newPoint,
+          };
+        }),
+
+      // Remove um ponto individual (ex.: caiu sobre área urbana ou outro
+      // local que foge aos critérios de elegibilidade — README §3.3) sem
+      // precisar descartar a triagem inteira.
+      removePoint: (pointId) =>
+        set((state) => ({
+          allPoints: state.allPoints.filter((p) => p.id !== pointId),
+          customPoints: state.customPoints.filter((p) => p.id !== pointId),
+          currentMockPoints: state.currentMockPoints.filter((p) => p.id !== pointId),
+          selectedPoint: state.selectedPoint?.id === pointId ? null : state.selectedPoint,
+        })),
+
+      // "Recarregar Seleção": gera uma nova rodada dos 150 pontos de
+      // demonstração (mesma distribuição geográfica por município, novo
+      // jitter/atributos) — usado quando um ou mais pontos sintéticos caem
+      // em locais inadequados. Só afeta a base "mock"; dados customizados
+      // (upload/GEE/campo) não são tocados.
+      regenerateMockPoints: () =>
+        set((state) => {
+          const seedOffset = Date.now() % 100000;
+          const regenerated = generate150MockErosionPoints(seedOffset);
+          return {
+            currentMockPoints: regenerated,
+            allPoints: state.dataSource === "mock" ? regenerated : state.allPoints,
+            selectedPoint: state.dataSource === "mock" ? null : state.selectedPoint,
+          };
+        }),
+
+      // "Zerar Mapa": remove todos os pontos, talhões/polígonos e AOIs ativas da tela,
+      // resetando os filtros e a seleção para deixar a área de trabalho totalmente limpa.
+      clearMap: () =>
+        set((state) => {
+          const logEntry: SystemLog = {
+            id: `LOG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            timestamp: new Date().toISOString(),
+            severity: "info",
+            category: "Aplicação",
+            message: "Mapa zerado pelo usuário (focos e talhões removidos da tela).",
+          };
+          return {
+            allPoints: [],
+            customPoints: [],
+            currentMockPoints: [],
+            selectedPoint: null,
+            drawnPolygons: [],
+            selectedPolygon: null,
+            activeAOIPolygon: null,
+            drawingMode: false,
+            drawingPoints: [],
+            filters: initialFilters,
+            systemLogs: [logEntry, ...state.systemLogs],
+          };
+        }),
 
       setActiveRegion: (regionId) => {
         const found = regionPresets.find((r) => r.id === regionId);
@@ -199,6 +461,149 @@ export const useErosionStore = create<ErosionStoreState>()(
         set((state) => ({
           regionRequests: [request, ...state.regionRequests],
         })),
+
+      // Saved Datasets actions
+      saveDataset: (name, description) => {
+        const state = get();
+        const currentPoints = state.allPoints.length > 0 ? state.allPoints : state.getFilteredPoints();
+        const id = `dataset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const newDataset: SavedPointDataset = {
+          id,
+          name: name.trim() || `Coleção de Focos - ${new Date().toLocaleDateString("pt-BR")}`,
+          description: description?.trim() || "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          pointsCount: currentPoints.length,
+          points: JSON.parse(JSON.stringify(currentPoints)),
+          regionName: state.activeAOIPolygon?.name || state.activeRegion.name,
+          aoiPolygon: state.activeAOIPolygon,
+          filtersSnapshot: state.filters,
+          source: currentPoints[0]?.dataProvenance || "custom",
+        };
+
+        set((prev) => ({
+          savedDatasets: [newDataset, ...prev.savedDatasets.filter((d) => d.id !== newDataset.id)],
+        }));
+
+        return id;
+      },
+
+      loadDataset: (datasetId) => {
+        const state = get();
+        const target = state.savedDatasets.find((d) => d.id === datasetId);
+        if (!target || !target.points || target.points.length === 0) return;
+
+        const points = target.points;
+        set((prev) => ({
+          allPoints: points,
+          customPoints: points,
+          dataSource: "custom",
+          activeAOIPolygon: target.aoiPolygon || null,
+          selectedPoint: null,
+          activeModal: null,
+          filters: {
+            ...prev.filters,
+            searchQuery: "",
+            selectedWatersheds: [],
+            minSlope: 0,
+            maxSlope: 100,
+            minBsi: -1.0,
+            maxBsi: 1.0,
+            selectedSeverities: ["Moderada", "Alta", "Crítica"],
+            topN: Math.max(prev.filters.topN, points.length, 500),
+          },
+        }));
+
+        // Auto-fly to frame the points
+        if (points.length > 0) {
+          let minLat = 90;
+          let maxLat = -90;
+          let minLng = 180;
+          let maxLng = -180;
+          for (const p of points) {
+            if (p.latitude < minLat) minLat = p.latitude;
+            if (p.latitude > maxLat) maxLat = p.latitude;
+            if (p.longitude < minLng) minLng = p.longitude;
+            if (p.longitude > maxLng) maxLng = p.longitude;
+          }
+          state.flyToLocation({
+            lat: (minLat + maxLat) / 2,
+            lng: (minLng + maxLng) / 2,
+            zoom: points.length > 50 ? 7.5 : 11,
+            pitch: 45,
+          });
+        }
+      },
+
+      deleteDataset: (datasetId) => {
+        set((state) => ({
+          savedDatasets: state.savedDatasets.filter((d) => d.id !== datasetId),
+        }));
+      },
+
+      importDataset: (dataset) => {
+        if (!dataset || !Array.isArray(dataset.points) || dataset.points.length === 0) {
+          throw new Error("Arquivo de dataset inválido ou sem pontos de erosão.");
+        }
+        const id = dataset.id || `dataset-${Date.now()}`;
+        const imported: SavedPointDataset = {
+          ...dataset,
+          id,
+          pointsCount: dataset.points.length,
+          updatedAt: new Date().toISOString(),
+        };
+
+        set((prev) => ({
+          savedDatasets: [imported, ...prev.savedDatasets.filter((d) => d.id !== id)],
+        }));
+      },
+
+      // Drawn Polygons & Talhões actions
+      addDrawnPolygon: (poly) =>
+        set((state) => ({
+          drawnPolygons: [poly, ...state.drawnPolygons],
+          selectedPolygon: poly,
+          activeDrawingMode: false,
+          drawingPoints: [],
+        })),
+      updateDrawnPolygon: (id, patch) =>
+        set((state) => ({
+          drawnPolygons: state.drawnPolygons.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+          selectedPolygon:
+            state.selectedPolygon?.id === id ? { ...state.selectedPolygon, ...patch } : state.selectedPolygon,
+        })),
+      removeDrawnPolygon: (id) =>
+        set((state) => ({
+          drawnPolygons: state.drawnPolygons.filter((p) => p.id !== id),
+          selectedPolygon: state.selectedPolygon?.id === id ? null : state.selectedPolygon,
+        })),
+      clearDrawnPolygons: () =>
+        set(() => ({
+          drawnPolygons: [],
+          selectedPolygon: null,
+          activeDrawingMode: false,
+          drawingPoints: [],
+        })),
+      setSelectedPolygon: (polygon) => set({ selectedPolygon: polygon }),
+      setDrawingMode: (active) =>
+        set({ activeDrawingMode: active, drawingPoints: [] }),
+      setDrawingPoints: (points) => set({ drawingPoints: points }),
+      addDrawingPoint: (point) =>
+        set((state) => ({ drawingPoints: [...state.drawingPoints, point] })),
+
+      // System Logs actions
+      addSystemLog: (log) =>
+        set((state) => ({
+          systemLogs: [
+            {
+              ...log,
+              id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              timestamp: new Date().toISOString(),
+            },
+            ...state.systemLogs.slice(0, 149), // Mantém até 150 registros mais recentes
+          ],
+        })),
+      clearSystemLogs: () => set({ systemLogs: [] }),
 
       // Filter actions
       setSearchQuery: (query) =>
@@ -305,16 +710,19 @@ export const useErosionStore = create<ErosionStoreState>()(
       setMapboxToken: (token) => set({ mapboxToken: token }),
       setGoogleMapsKey: (key) => set({ googleMapsKey: key }),
       setCredentialPersistMode: (mode) => set({ credentialPersistMode: mode }),
+      setGeeSessionActive: (active) => set({ geeSessionActive: active }),
 
       // UI
       setActiveModal: (modal) => set({ activeModal: modal }),
+      openAuditDossier: (point) => set({ auditDossierPoint: point, activeModal: "audit-dossier" }),
+      closeAuditDossier: () => set({ activeModal: null, auditDossierPoint: null }),
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
 
       // Filtering logic
       getFilteredPoints: () => {
-        const { allPoints, filters, activeAOIPolygon } = get();
+        const { allPoints, filters, activeAOIPolygon, dataSource } = get();
 
         let result = allPoints.filter((pt) => {
           // Search query (id, name, municipality, watershed, soil)
@@ -350,8 +758,8 @@ export const useErosionStore = create<ErosionStoreState>()(
             return false;
           }
 
-          // Spatial clip inside active AOI polygon if one is loaded
-          if (activeAOIPolygon) {
+          // Spatial clip inside active AOI polygon only for mock demonstration data
+          if (activeAOIPolygon && dataSource === "mock") {
             const inside = isPointInGeoJSON(pt.latitude, pt.longitude, activeAOIPolygon.geometry);
             if (!inside) return false;
           }
@@ -396,10 +804,26 @@ export const useErosionStore = create<ErosionStoreState>()(
       name: "localizador-erosao-storage",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
-        gcpCredentials: state.credentialPersistMode === "local" ? state.gcpCredentials : null,
+        // IMPORTANTE (segurança): a private_key RSA da Service Account NUNCA é
+        // persistida em localStorage, mesmo no modo "local" — ficaria em texto
+        // plano, acessível a qualquer script (XSS) e sobrevivendo indefinidamente
+        // no disco do usuário. Persistimos apenas metadados não sensíveis; a
+        // chave em si vive somente em memória (estado não persistido) e precisa
+        // ser recarregada a cada nova sessão do navegador. Ver
+        // PROMPT_IMPLEMENTACAO_SENIOR.md, item "Sessão de credenciais no servidor",
+        // para a solução definitiva (sessão httpOnly no servidor).
+        gcpCredentials:
+          state.credentialPersistMode === "local" && state.gcpCredentials
+            ? { ...state.gcpCredentials, private_key: "" }
+            : null,
         mapboxToken: state.credentialPersistMode === "local" ? state.mapboxToken : "",
         googleMapsKey: state.credentialPersistMode === "local" ? state.googleMapsKey : "",
         credentialPersistMode: state.credentialPersistMode,
+        savedDatasets: state.savedDatasets,
+        drawnPolygons: state.drawnPolygons,
+        allPoints: state.allPoints,
+        customPoints: state.customPoints,
+        activeAOIPolygon: state.activeAOIPolygon,
         regionRequests: state.regionRequests,
         theme: state.theme,
         mapState: {
@@ -415,3 +839,20 @@ export const useErosionStore = create<ErosionStoreState>()(
     }
   )
 );
+
+/**
+ * Hook reativo seguro e memoizado para obter os pontos filtrados
+ * sem causar re-renderizações circulares no Zustand / React.
+ */
+export function useFilteredPoints(): ErosionPoint[] {
+  const allPoints = useErosionStore((s) => s.allPoints);
+  const filters = useErosionStore((s) => s.filters);
+  const activeAOIPolygon = useErosionStore((s) => s.activeAOIPolygon);
+  const dataSource = useErosionStore((s) => s.dataSource);
+  const getFilteredPoints = useErosionStore((s) => s.getFilteredPoints);
+
+  return useMemo(() => {
+    return getFilteredPoints();
+  }, [allPoints, filters, activeAOIPolygon, dataSource, getFilteredPoints]);
+}
+

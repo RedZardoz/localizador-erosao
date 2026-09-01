@@ -2,7 +2,25 @@ import { AOIPolygon, ErosionPoint } from "@/types/erosion";
 import { formatToDMS } from "./geoUtils";
 
 /**
- * Exports points to GeoJSON FeatureCollection
+ * ============================================================================
+ * Módulo de Exportação e Interoperabilidade SIG (GeoJSON, KML, CSV, ML Dataset)
+ * Programa de Pós-Graduação em Tecnologias Computacionais para o Agronegócio
+ * (PPGTCA - 2026)
+ * ============================================================================
+ *
+ * Suporta interoperabilidade direta com softwares SIG profissionais e pipelines de ML:
+ * - QGIS (Quantum GIS) / ArcGIS Pro (GeoJSON RFC 7946 / Shapefile)
+ * - Google Earth Pro / Google Earth 3D Web (.kml com balões estilizados)
+ * - Planilhas eletrônicas e KoboToolbox (.csv em UTF-8 com BOM para Excel)
+ * - Dataset de Treinamento tabular para XGBoost com interpretabilidade SHAP (README §1)
+ */
+
+/**
+ * Exporta os pontos amostrais e polígono de AOI no formato padronizado GeoJSON (RFC 7946).
+ *
+ * @param points - Conjunto de pontos filtrados ou triados
+ * @param aoiPolygon - Polígono de Área de Interesse opcional
+ * @returns String JSON formatada do FeatureCollection.
  */
 export function exportToGeoJSON(points: ErosionPoint[], aoiPolygon?: AOIPolygon | null): string {
   const features: GeoJSON.Feature[] = points.map((p) => ({
@@ -56,95 +74,121 @@ export function exportToGeoJSON(points: ErosionPoint[], aoiPolygon?: AOIPolygon 
 }
 
 /**
- * Exports points to standard styled KML for Google Earth
+ * Exporta os pontos para o formato KML 2.2 do Google Earth com ícones coloridos por severidade e balões HTML.
+ *
+ * @param points - Conjunto de pontos
+ * @param aoiOrTitle - Polígono opcional de AOI ou título da camada
+ * @returns Documento XML KML completo.
  */
-export function exportToKML(points: ErosionPoint[], title: string = "Triagem de Erosao Parana"): string {
-  const placemarks = points
+export function exportToKML(points: ErosionPoint[], aoiOrTitle?: AOIPolygon | string | null): string {
+  const getKmlColor = (severity: string) => {
+    switch (severity) {
+      case "Crítica":
+        return "ff0000ff"; // Red
+      case "Alta":
+        return "ff00a5ff"; // Orange
+      default:
+        return "ff00ffff"; // Yellow
+    }
+  };
+
+  let placemarks = points
     .map((p) => {
-      const styleId = p.severity === "Crítica" ? "critica" : p.severity === "Alta" ? "alta" : "moderada";
+      const color = getKmlColor(p.severity);
       const dmsLat = formatToDMS(p.latitude, true);
       const dmsLng = formatToDMS(p.longitude, false);
 
       return `
-    <Placemark id="${p.id}">
-      <name>${escapeXml(p.name)}</name>
-      <styleUrl>#${styleId}</styleUrl>
+    <Placemark>
+      <name>${escapeXml(p.code || "")} - ${escapeXml(p.municipality || "")}</name>
       <description><![CDATA[
-        <h3>${escapeXml(p.name)} (${p.code})</h3>
-        <table border="1" cellpadding="4" cellspacing="0" style="font-family:sans-serif;font-size:12px;">
-          <tr><td><b>Severidade:</b></td><td style="color:${p.severity === "Crítica" ? "#dc2626" : p.severity === "Alta" ? "#ea580c" : "#ca8a04"}"><b>${p.severity}</b></td></tr>
-          <tr><td><b>Score de Prioridade:</b></td><td>${p.priorityScore}/100</td></tr>
-          <tr><td><b>Município:</b></td><td>${escapeXml(p.municipality)} (${p.state})</td></tr>
-          <tr><td><b>Bacia Hidrográfica:</b></td><td>${escapeXml(p.watershed)}</td></tr>
-          <tr><td><b>Declividade:</b></td><td>${p.slopePercent}% (${p.slopeDegrees}°)</td></tr>
-          <tr><td><b>Índice BSI (Solo Exposto):</b></td><td>${p.bsi}</td></tr>
-          <tr><td><b>NDVI (Vegetação):</b></td><td>${p.ndvi}</td></tr>
-          <tr><td><b>Tipo de Feição:</b></td><td>${escapeXml(p.featureType)}</td></tr>
-          <tr><td><b>Tipo de Solo:</b></td><td>${escapeXml(p.soilType)}</td></tr>
-          <tr><td><b>Perda Estimada:</b></td><td>${p.estimatedSoilLoss} t/ha/ano</td></tr>
-          <tr><td><b>Altitude:</b></td><td>${p.elevation} m</td></tr>
-          <tr><td><b>Coordenadas DMS:</b></td><td>${dmsLat}, ${dmsLng}</td></tr>
-          <tr><td><b>Data Detecção:</b></td><td>${p.detectionDate}</td></tr>
-        </table>
-        <p><i>${escapeXml(p.notes || "")}</i></p>
+        <h2>${escapeXml(p.name || "")}</h2>
+        <p><b>Severidade:</b> ${escapeXml(p.severity || "")}</p>
+        <p><b>Score de Prioridade:</b> ${p.priorityScore} / 100</p>
+        <p><b>Perda Estimada:</b> ${p.estimatedSoilLoss} t/ha·ano</p>
+        <hr/>
+        <p><b>Município:</b> ${escapeXml(p.municipality || "")} (${escapeXml(p.state || "")})</p>
+        <p><b>Bacia Hidrográfica:</b> ${escapeXml(p.watershed || "")}</p>
+        <p><b>Tipo de Solo:</b> ${escapeXml(p.soilType || "")}</p>
+        <p><b>Declividade:</b> ${p.slopePercent}% (${p.slopeDegrees}°)</p>
+        <p><b>BSI (Solo Exposto):</b> ${p.bsi > 0 ? "+" : ""}${p.bsi}</p>
+        <p><b>NDVI:</b> ${p.ndvi}</p>
+        <p><b>Altitude DEM:</b> ${p.elevation} m</p>
+        <p><b>Coordenadas DMS:</b> ${dmsLat}, ${dmsLng}</p>
+        <p><b>Observações:</b> <i>${escapeXml(p.notes || "")}</i></p>
       ]]></description>
-      <ExtendedData>
-        <Data name="id"><value>${p.id}</value></Data>
-        <Data name="severity"><value>${p.severity}</value></Data>
-        <Data name="slopePercent"><value>${p.slopePercent}</value></Data>
-        <Data name="bsi"><value>${p.bsi}</value></Data>
-        <Data name="priorityScore"><value>${p.priorityScore}</value></Data>
-      </ExtendedData>
+      <Style>
+        <IconStyle>
+          <color>${color}</color>
+          <scale>1.2</scale>
+          <Icon>
+            <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+          </Icon>
+        </IconStyle>
+        <LabelStyle>
+          <scale>0.8</scale>
+        </LabelStyle>
+      </Style>
       <Point>
+        <altitudeMode>clampToGround</altitudeMode>
         <coordinates>${p.longitude},${p.latitude},${p.elevation}</coordinates>
       </Point>
     </Placemark>`;
     })
     .join("\n");
 
+  let aoiKml = "";
+  if (aoiOrTitle && typeof aoiOrTitle === "object" && aoiOrTitle.geometry) {
+    const coordsStr =
+      aoiOrTitle.geometry.type === "Polygon"
+        ? aoiOrTitle.geometry.coordinates[0].map((c: any) => `${c[0]},${c[1]},0`).join(" ")
+        : "";
+
+    if (coordsStr) {
+      aoiKml = `
+    <Placemark>
+      <name>AOI: ${escapeXml(aoiOrTitle.name || "Área de Interesse")}</name>
+      <Style>
+        <LineStyle>
+          <color>ffffaa00</color>
+          <width>3</width>
+        </LineStyle>
+        <PolyStyle>
+          <color>33ffaa00</color>
+        </PolyStyle>
+      </Style>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>${coordsStr}</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>`;
+    }
+  }
+
+  const docTitle = typeof aoiOrTitle === "string" ? aoiOrTitle : "Focos de Erosao Laminar - Parana";
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${escapeXml(title)}</name>
-    <open>1</open>
-    
-    <!-- Styles for Severity Levels -->
-    <Style id="critica">
-      <IconStyle>
-        <color>ff0000ff</color>
-        <scale>1.2</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
-      </IconStyle>
-    </Style>
-    <Style id="alta">
-      <IconStyle>
-        <color>ff00a5ff</color>
-        <scale>1.1</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/orange-circle.png</href></Icon>
-      </IconStyle>
-    </Style>
-    <Style id="moderada">
-      <IconStyle>
-        <color>ff00ffff</color>
-        <scale>1.0</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon>
-      </IconStyle>
-    </Style>
-
-    <Folder>
-      <name>Focos de Erosão Triados</name>
-      ${placemarks}
-    </Folder>
+    <name>${escapeXml(docTitle)}</name>
+    <description>Dataset de Triagem Geoespacial e Monitoramento - PPGTCA 2026</description>
+    ${aoiKml}
+    ${placemarks}
   </Document>
 </kml>`;
 }
 
 /**
- * Exports points to CSV with complete columns
+ * Exporta a tabela tabular completa de variáveis físicas e pedológicas no formato CSV (padrão Excel com BOM).
+ *
+ * @param points - Conjunto de pontos
+ * @returns Texto CSV codificado pronto para download.
  */
 export function exportToCSV(points: ErosionPoint[]): string {
   const headers = [
-    "ID",
     "Codigo",
     "Nome",
     "Latitude",
@@ -152,50 +196,124 @@ export function exportToCSV(points: ErosionPoint[]): string {
     "Latitude_DMS",
     "Longitude_DMS",
     "Altitude_m",
-    "Declividade_pct",
-    "Declividade_graus",
-    "Indice_BSI",
-    "Indice_NDVI",
-    "Severidade",
-    "Prioridade_Score",
     "Municipio",
     "Estado",
-    "Regiao",
+    "Macrorregiao",
     "Bacia_Hidrografica",
-    "Tipo_Feicao",
     "Tipo_Solo",
-    "Perda_Solo_t_ha_ano",
+    "Tipologia_Feicao",
+    "Severidade",
+    "Score_Prioridade",
+    "Perda_Solo_Estimada_t_ha_ano",
+    "Declividade_Percentual",
+    "Declividade_Graus",
+    "BSI_Solo_Exposto",
+    "NDVI_Vigor_Vegetal",
     "Data_Deteccao",
-    "Notas",
+    "Observacoes",
   ];
 
   const rows = points.map((p) => [
-    `"${p.id}"`,
-    `"${p.code}"`,
-    `"${p.name.replace(/"/g, '""')}"`,
+    `"${p.code || ""}"`,
+    `"${(p.name || "").replace(/"/g, '""')}"`,
     p.latitude.toFixed(6),
     p.longitude.toFixed(6),
     `"${formatToDMS(p.latitude, true)}"`,
     `"${formatToDMS(p.longitude, false)}"`,
     p.elevation,
+    `"${p.municipality || ""}"`,
+    `"${p.state || ""}"`,
+    `"${p.macroRegion || ""}"`,
+    `"${p.watershed || ""}"`,
+    `"${p.soilType || ""}"`,
+    `"${p.featureType || ""}"`,
+    `"${p.severity || ""}"`,
+    p.priorityScore,
+    p.estimatedSoilLoss,
     p.slopePercent,
     p.slopeDegrees,
     p.bsi,
     p.ndvi,
-    `"${p.severity}"`,
-    p.priorityScore,
-    `"${p.municipality.replace(/"/g, '""')}"`,
-    `"${p.state}"`,
-    `"${p.macroRegion}"`,
-    `"${p.watershed.replace(/"/g, '""')}"`,
-    `"${p.featureType.replace(/"/g, '""')}"`,
-    `"${p.soilType.replace(/"/g, '""')}"`,
-    p.estimatedSoilLoss,
-    `"${p.detectionDate}"`,
+    `"${p.detectionDate || ""}"`,
     `"${(p.notes || "").replace(/"/g, '""')}"`,
   ]);
 
-  return [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+  const csvContent = [headers.join(";"), ...rows.map((r) => r.join(";"))].join("\r\n");
+  return "\uFEFF" + csvContent;
+}
+
+/**
+ * Exporta dataset tabular rotulado para treinamento de Aprendizado de Máquina (XGBoost / SHAP) — README §1.
+ *
+ * @param points - Pontos com variáveis reais e/ou observações de campo Kobo
+ * @returns CSV formatado com features de satélite/DEM e target rotulado.
+ */
+export function exportTrainingDatasetCSV(points: ErosionPoint[]): string {
+  const headers = [
+    "point_id",
+    "code",
+    "latitude",
+    "longitude",
+    "elevation_m",
+    "slope_degrees",
+    "slope_percent",
+    "bsi",
+    "ndvi",
+    "soil_type",
+    "stratum_id",
+    "rusle_r",
+    "rusle_k",
+    "rusle_ls",
+    "rusle_c",
+    "rusle_p",
+    "rusle_soil_loss_t_ha_yr",
+    "priority_score",
+    "severity_label",
+    "data_provenance",
+    "is_field_validated",
+  ];
+
+  const rows = points.map((p) => [
+    `"${p.id}"`,
+    `"${p.code}"`,
+    p.latitude.toFixed(6),
+    p.longitude.toFixed(6),
+    p.elevation,
+    p.slopeDegrees,
+    p.slopePercent,
+    p.bsi,
+    p.ndvi,
+    `"${p.soilType}"`,
+    `"${p.stratumId || ""}"`,
+    p.rusleFactors?.r ?? "",
+    p.rusleFactors?.k ?? "",
+    p.rusleFactors?.ls ?? "",
+    p.rusleFactors?.c ?? "",
+    p.rusleFactors?.p ?? "",
+    p.estimatedSoilLoss,
+    p.priorityScore,
+    `"${p.severity}"`,
+    `"${p.dataProvenance || "mock"}"`,
+    p.dataProvenance === "field-validated" ? 1 : 0,
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+  return "\uFEFF" + csvContent;
+}
+
+/**
+ * Dispara o download de um arquivo no navegador do usuário.
+ */
+export function downloadFile(content: string, fileName: string, contentType: string) {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function escapeXml(unsafe: string): string {
@@ -215,19 +333,4 @@ function escapeXml(unsafe: string): string {
         return c;
     }
   });
-}
-
-/**
- * Triggers browser file download
- */
-export function downloadFile(content: string, filename: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

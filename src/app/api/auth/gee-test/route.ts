@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GcpCredentialsSchema } from "@/types/erosion";
+import { verifyEarthEngineAccess } from "@/lib/gee/verifyEarthEngineAccess";
 
+/**
+ * Testa uma Service Account contra o Google DE VERDADE, sem persistir nada no
+ * servidor (para isso, ver /api/auth/gee-session). Útil para validar um
+ * credentials.json antes de decidir usá-lo.
+ *
+ * Antes desta implementação, esta rota só validava o FORMATO do JSON e
+ * sempre retornava sucesso ("handshake simulado"). Agora qualquer falha é um
+ * erro real relatado pelo Google.
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Validate schema with Zod
     const parseResult = GcpCredentialsSchema.safeParse(body);
     if (!parseResult.success) {
       return NextResponse.json(
@@ -18,41 +27,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { project_id, client_email, private_key } = parseResult.data;
+    const verification = await verifyEarthEngineAccess(parseResult.data as any);
 
-    // Check private key formatting
-    if (!private_key.includes("BEGIN PRIVATE KEY") || !private_key.includes("END PRIVATE KEY")) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Chave privada GCP malformada ou truncada.",
-        },
-        { status: 400 }
-      );
+    if (!verification.success) {
+      return NextResponse.json({ success: false, error: verification.error }, { status: verification.status || 400 });
     }
 
-    // In a live environment with Google Cloud SDK installed, earthengine-api or googleapis will authenticate.
-    // Here we perform live structural validation, certificate format checks and simulated Earth Engine handshake.
     return NextResponse.json({
       success: true,
-      message: "Credencial da Service Account do GCP validada com sucesso!",
-      data: {
-        projectId: project_id,
-        clientEmail: client_email,
-        serviceAccountType: "Google Earth Engine Service Account",
-        scopes: [
-          "https://www.googleapis.com/auth/earthengine",
-          "https://www.googleapis.com/auth/devstorage.read_only",
-        ],
-        timestamp: new Date().toISOString(),
-      },
+      message: "Autenticação real da Service Account validada com o Google Earth Engine!",
+      data: verification.data,
     });
   } catch (err: any) {
     return NextResponse.json(
-      {
-        success: false,
-        error: `Erro ao processar credenciais: ${err.message || "Erro desconhecido"}`,
-      },
+      { success: false, error: `Erro ao processar credenciais: ${err.message || "Erro desconhecido"}` },
       { status: 500 }
     );
   }

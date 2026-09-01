@@ -10,11 +10,11 @@ import {
   Flame,
   ShieldAlert,
 } from "lucide-react";
-import { useErosionStore } from "@/lib/store/useErosionStore";
+import { useErosionStore, useFilteredPoints } from "@/lib/store/useErosionStore";
 
 export const StatsOverview: React.FC = () => {
-  const { getFilteredPoints, toggleSeverity, filters } = useErosionStore();
-  const points = getFilteredPoints();
+  const { toggleSeverity, filters } = useErosionStore();
+  const points = useFilteredPoints();
 
   const total = points.length;
 

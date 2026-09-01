@@ -10,15 +10,17 @@ import {
   Settings,
   HelpCircle,
   FileCode,
+  ClipboardCheck,
 } from "lucide-react";
 import { useErosionStore } from "@/lib/store/useErosionStore";
 import { GcpCredentialsManager } from "./GcpCredentialsManager";
 import { ApiTokensManager } from "./ApiTokensManager";
 import { DataIngestionDropzone } from "./DataIngestionDropzone";
+import { KoboFieldImport } from "./KoboFieldImport";
 
 export const SettingsModal: React.FC = () => {
   const { activeModal, setActiveModal } = useErosionStore();
-  const [tab, setTab] = useState<"credentials" | "ingestion" | "tokens">("credentials");
+  const [tab, setTab] = useState<"credentials" | "ingestion" | "tokens" | "kobo">("credentials");
 
   if (activeModal !== "settings") return null;
 
@@ -84,6 +86,18 @@ export const SettingsModal: React.FC = () => {
             <FileCode className="w-4 h-4" />
             Tokens de Mapas
           </button>
+
+          <button
+            onClick={() => setTab("kobo")}
+            className={`pb-2.5 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
+              tab === "kobo"
+                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold"
+                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+            }`}
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            Validação de Campo
+          </button>
         </div>
 
         {/* Modal Body */}
@@ -91,6 +105,7 @@ export const SettingsModal: React.FC = () => {
           {tab === "credentials" && <GcpCredentialsManager />}
           {tab === "ingestion" && <DataIngestionDropzone />}
           {tab === "tokens" && <ApiTokensManager />}
+          {tab === "kobo" && <KoboFieldImport />}
         </div>
 
         {/* Modal Footer */}

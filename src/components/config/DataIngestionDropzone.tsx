@@ -241,6 +241,17 @@ export const DataIngestionDropzone: React.FC = () => {
             </div>
           </div>
 
+          {!!previewResult.summary.pointsOutsideParana && previewResult.summary.pointsOutsideParana > 0 && (
+            <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                {previewResult.summary.pointsOutsideParana} de {previewResult.summary.totalFeatures} ponto(s) caem fora
+                do limite territorial do Paraná — a importação prosseguiu normalmente, mas confira se as coordenadas
+                estão corretas (o app também aceita dados de outros estados via Configurações → Regiões).
+              </span>
+            </div>
+          )}
+
           {previewResult.points && previewResult.points.length > 0 && (
             <div className="max-h-36 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] font-mono custom-scrollbar">
               <table className="w-full text-left">

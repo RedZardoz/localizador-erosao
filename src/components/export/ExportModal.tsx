@@ -11,27 +11,29 @@ import {
   CheckCircle2,
   Layers,
   Sparkles,
+  GraduationCap,
 } from "lucide-react";
 import confetti from "canvas-confetti";
-import { useErosionStore } from "@/lib/store/useErosionStore";
+import { useErosionStore, useFilteredPoints } from "@/lib/store/useErosionStore";
 import {
   downloadFile,
   exportToCSV,
   exportToGeoJSON,
   exportToKML,
+  exportTrainingDatasetCSV,
 } from "@/lib/utils/exportUtils";
 
 export const ExportModal: React.FC = () => {
-  const { activeModal, setActiveModal, getFilteredPoints, activeAOIPolygon, activeRegion } =
+  const { activeModal, setActiveModal, allPoints, activeAOIPolygon, activeRegion } =
     useErosionStore();
 
   const [downloadedFormat, setDownloadedFormat] = useState<string | null>(null);
+  const points = useFilteredPoints();
+  const validatedCount = allPoints.filter((p) => p.dataProvenance === "field-validated").length;
 
   if (activeModal !== "export") return null;
 
-  const points = getFilteredPoints();
-
-  const handleExport = (format: "geojson" | "kml" | "csv" | "print") => {
+  const handleExport = (format: "geojson" | "kml" | "csv" | "print" | "training") => {
     const timestamp = new Date().toISOString().slice(0, 10);
     const baseName = `triagem_erosao_${activeRegion.state.toLowerCase()}_${points.length}_focos_${timestamp}`;
 
@@ -44,6 +46,9 @@ export const ExportModal: React.FC = () => {
     } else if (format === "csv") {
       const content = exportToCSV(points);
       downloadFile(content, `${baseName}.csv`, "text/csv;charset=utf-8;");
+    } else if (format === "training") {
+      const content = exportTrainingDatasetCSV(allPoints);
+      downloadFile(content, `dataset_treinamento_xgboost_${timestamp}.csv`, "text/csv;charset=utf-8;");
     } else if (format === "print") {
       window.print();
       return;
@@ -170,6 +175,26 @@ export const ExportModal: React.FC = () => {
                 <h4 className="text-xs font-bold text-slate-900 dark:text-white">Relatório de Triagem</h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Geração de sumário executivo para impressão.
+                </p>
+              </div>
+            </button>
+
+            {/* Training Dataset (field-validated only) */}
+            <button
+              onClick={() => handleExport("training")}
+              disabled={validatedCount === 0}
+              className="p-4 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-850 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-800 hover:border-violet-500/60 rounded-xl text-left transition-all group flex flex-col justify-between space-y-2 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <GraduationCap className="w-5 h-5 text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform" />
+                <span className="text-[10px] font-mono bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                  .CSV
+                </span>
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white">Dataset de Treinamento (XGBoost)</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Só os {validatedCount} ponto(s) validados em campo, com fatores RUSLE e observações.
                 </p>
               </div>
             </button>

@@ -1,4 +1,5 @@
 import { ErosionPoint } from "@/types/erosion";
+import { calculatePriorityScore, calculateSeverity } from "@/lib/rusle/rusleCalculator";
 
 // Helper generator for realistic 150 critical erosion points across Paraná
 const paranaLocations = [
@@ -101,12 +102,19 @@ function seededRandom(seed: number) {
   return x - Math.floor(x);
 }
 
-export function generate150MockErosionPoints(): ErosionPoint[] {
+/**
+ * @param seedOffset Desloca o gerador pseudoaleatório (mantendo a mesma
+ * distribuição geográfica por município) para permitir "recarregar" o
+ * conjunto de demonstração com jitter/atributos diferentes — usado pelo
+ * botão "Recarregar Seleção" quando um ponto sintético cai sobre uma área
+ * urbana ou outro local que foge aos critérios de elegibilidade (README §3.3).
+ */
+export function generate150MockErosionPoints(seedOffset = 0): ErosionPoint[] {
   const points: ErosionPoint[] = [];
 
   for (let i = 1; i <= 150; i++) {
     const locBase = paranaLocations[(i - 1) % paranaLocations.length];
-    const seed = i * 42.17;
+    const seed = i * 42.17 + seedOffset;
     
     // Add small realistic spatial jitter (± 0.08° ≈ ± 8 km within municipality)
     const latOffset = (seededRandom(seed + 1) - 0.5) * 0.16;
@@ -128,22 +136,17 @@ export function generate150MockErosionPoints(): ErosionPoint[] {
     const featTypeIdx = Math.floor(seededRandom(seed + 6) * featureTypes.length);
     const featureType = featureTypes[featTypeIdx];
     
-    // Severity logic based on slope + BSI + soil vulnerability
-    const severityScore = (slopePct * 0.4) + (bsi * 50) + (locBase.soil.includes("Argissolo") || locBase.soil.includes("Neossolo") ? 18 : 8);
-    let severity: "Moderada" | "Alta" | "Crítica" = "Moderada";
-    if (severityScore > 48) severity = "Crítica";
-    else if (severityScore > 28) severity = "Alta";
+    // Severity e Score de Prioridade calculados pelas MESMAS fórmulas (README
+    // §3.1/§3.2) usadas no cálculo real via satélite (src/lib/rusle/rusleCalculator.ts) —
+    // aqui alimentadas por slope/BSI sintéticos, já que este é o gerador de
+    // dados de DEMONSTRAÇÃO da interface (ver dataProvenance: "mock" abaixo).
+    const { severity } = calculateSeverity(slopePct, bsi, locBase.soil);
+    const priorityScore = calculatePriorityScore(severity, bsi, slopeDeg, seededRandom(seed + 7) * 10);
 
-    // Estimated soil loss in t/ha/year (RUSLE empirical estimate)
+    // Estimativa heurística de perda de solo (NÃO é a RUSLE completa: usa apenas
+    // declividade e BSI sintéticos, sem R/K/LS/C reais). Serve só para ordenar
+    // os pontos de demonstração; ver /api/gee/analyze-point para o cálculo real.
     const soilLoss = Number((5 + (slopePct * 2.2) * (Math.max(0.1, bsi + 0.3) * 1.8)).toFixed(1));
-    
-    // Priority score 0-100 for triage ranking
-    const priorityScore = Math.min(100, Math.max(10, Math.round(
-      (severity === "Crítica" ? 70 : severity === "Alta" ? 45 : 20) +
-      (bsi * 25) +
-      (slopeDeg * 1.2) +
-      (seededRandom(seed + 7) * 10)
-    )));
 
     const elevation = Math.round(locBase.elev + (seededRandom(seed + 8) - 0.5) * 80);
 
@@ -170,7 +173,8 @@ export function generate150MockErosionPoints(): ErosionPoint[] {
       estimatedSoilLoss: soilLoss,
       priorityScore,
       detectionDate: `2026-0${Math.floor(1 + seededRandom(seed + 9) * 7)}-${String(Math.floor(1 + seededRandom(seed + 10) * 28)).padStart(2, "0")}`,
-      notes: `Ponto mapeado para triagem de conservação de solos. BSI de ${bsi} indica ${bsi > 0.4 ? "solo altamente exposto sem cobertura vegetal" : "cobertura parcial com risco de escoamento superficial"}.`,
+      notes: `Candidato a talhão-piloto para amostragem em campo (GNSS RTK / VANT) e formação do dataset rotulado de treinamento do XGBoost — BSI de ${bsi} indica ${bsi > 0.4 ? "solo altamente exposto sem cobertura vegetal" : "cobertura parcial com risco de escoamento superficial"} (dado sintético de demonstração, não medido).`,
+      dataProvenance: "mock",
     });
   }
 

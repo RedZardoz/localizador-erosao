@@ -2,6 +2,7 @@ import Papa from "papaparse";
 import JSZip from "jszip";
 import { kml as kmlToGeoJSON } from "@tmcw/togeojson";
 import { AOIPolygon, ErosionPoint, SeverityLevel, SoilType } from "@/types/erosion";
+import { countPointsOutsideParana } from "./geoUtils";
 
 export interface ParsedDataResult {
   points?: ErosionPoint[];
@@ -11,6 +12,7 @@ export interface ParsedDataResult {
     detectedColumns: string[];
     geometryType: "Point" | "Polygon" | "MultiPolygon" | "Mixed";
     bounds?: [[number, number], [number, number]];
+    pointsOutsideParana?: number;
   };
 }
 
@@ -75,6 +77,18 @@ export async function parseCSV(fileContent: string, fileName: string): Promise<P
           if (lng < minLng) minLng = lng;
           if (lng > maxLng) maxLng = lng;
 
+          // Rastreia quais campos NÃO vieram do arquivo original e tiveram que
+          // ser preenchidos com um valor padrão — evita que um ponto pareça
+          // "medido" quando na verdade é uma suposição do parser.
+          const estimatedFields: string[] = [];
+          const hasCol = (...names: string[]) => names.some((n) => row[n] !== undefined && row[n] !== null && row[n] !== "");
+
+          if (!hasCol("slope", "declividade", "decliv")) estimatedFields.push("slopePercent");
+          if (!hasCol("bsi", "indice_solo")) estimatedFields.push("bsi");
+          if (!hasCol("severity", "severidade")) estimatedFields.push("severity");
+          if (!hasCol("priority", "score")) estimatedFields.push("priorityScore");
+          if (!hasCol("soil_loss", "perda_solo")) estimatedFields.push("estimatedSoilLoss");
+
           const slope = parseFloat(row.slope || row.declividade || row.decliv || 15);
           const bsi = parseFloat(row.bsi || row.indice_solo || 0.4);
           const severityRaw = String(row.severity || row.severidade || "Alta");
@@ -113,6 +127,8 @@ export async function parseCSV(fileContent: string, fileName: string): Promise<P
             detectionDate: String(row.date || row.data || new Date().toISOString().slice(0, 10)),
             notes: String(row.notes || row.observacao || "Importado via arquivo CSV"),
             isCustom: true,
+            dataProvenance: "user-upload",
+            estimatedFields: estimatedFields.length > 0 ? estimatedFields : undefined,
           });
         });
 
@@ -127,6 +143,7 @@ export async function parseCSV(fileContent: string, fileName: string): Promise<P
             detectedColumns: Object.keys(firstRow),
             geometryType: "Point",
             bounds: minLat !== Infinity ? [[minLng, minLat], [maxLng, maxLat]] : undefined,
+            pointsOutsideParana: countPointsOutsideParana(points),
           },
         });
       },
@@ -177,6 +194,14 @@ export function parseGeoJSON(geojsonRaw: string | object, fileName: string): Par
       const slope = parseFloat(props.slope || props.slopePercent || props.declividade || 16);
       const bsi = parseFloat(props.bsi || props.indice_solo || 0.45);
 
+      const estimatedFields: string[] = [];
+      const hasProp = (...names: string[]) => names.some((n) => props[n] !== undefined && props[n] !== null && props[n] !== "");
+      if (!hasProp("slope", "slopePercent", "declividade")) estimatedFields.push("slopePercent");
+      if (!hasProp("bsi", "indice_solo")) estimatedFields.push("bsi");
+      if (!hasProp("severity")) estimatedFields.push("severity");
+      if (!hasProp("priorityScore")) estimatedFields.push("priorityScore");
+      if (!hasProp("estimatedSoilLoss")) estimatedFields.push("estimatedSoilLoss");
+
       points.push({
         id,
         code: id,
@@ -200,6 +225,8 @@ export function parseGeoJSON(geojsonRaw: string | object, fileName: string): Par
         detectionDate: String(props.detectionDate || new Date().toISOString().slice(0, 10)),
         notes: String(props.notes || "Importado via GeoJSON"),
         isCustom: true,
+        dataProvenance: "user-upload",
+        estimatedFields: estimatedFields.length > 0 ? estimatedFields : undefined,
       });
     } else if (feat.geometry.type === "Polygon" || feat.geometry.type === "MultiPolygon") {
       polygons.push({
@@ -230,6 +257,7 @@ export function parseGeoJSON(geojsonRaw: string | object, fileName: string): Par
       detectedColumns: features[0]?.properties ? Object.keys(features[0].properties) : [],
       geometryType,
       bounds: minLat !== Infinity ? [[minLng, minLat], [maxLng, maxLat]] : undefined,
+      pointsOutsideParana: points.length > 0 ? countPointsOutsideParana(points) : undefined,
     },
   };
 }

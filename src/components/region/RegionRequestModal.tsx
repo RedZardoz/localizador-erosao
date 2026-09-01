@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   X,
   Globe,
@@ -14,12 +14,24 @@ import {
   PlusCircle,
   Layers,
   Sparkles,
+  Landmark,
+  RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useErosionStore } from "@/lib/store/useErosionStore";
 import { regionPresets } from "@/data/regionsData";
 import { AOIPolygon, NewRegionRequest } from "@/types/erosion";
 import { parseGeoJSON, parseKML } from "@/lib/utils/parsers";
+import {
+  IbgeEstado,
+  IbgeMunicipio,
+  boundaryBBox,
+  fetchEstadoBoundary,
+  fetchEstados,
+  fetchMunicipioBoundary,
+  fetchMunicipios,
+} from "@/lib/api/ibgeClient";
 
 export const RegionRequestModal: React.FC = () => {
   const {
@@ -34,7 +46,99 @@ export const RegionRequestModal: React.FC = () => {
     flyToLocation,
   } = useErosionStore();
 
-  const [tab, setTab] = useState<"presets" | "upload-aoi" | "new-request">("presets");
+  const [tab, setTab] = useState<"boundary" | "presets" | "upload-aoi" | "new-request">("boundary");
+
+  // Estado / Município (limite territorial oficial via IBGE)
+  const [boundaryMode, setBoundaryMode] = useState<"estado" | "municipio">("estado");
+  const [estados, setEstados] = useState<IbgeEstado[]>([]);
+  const [municipios, setMunicipios] = useState<IbgeMunicipio[]>([]);
+  const [selectedEstadoSigla, setSelectedEstadoSigla] = useState("");
+  const [selectedMunicipioId, setSelectedMunicipioId] = useState<number | "">("");
+  const [loadingEstados, setLoadingEstados] = useState(false);
+  const [loadingMunicipios, setLoadingMunicipios] = useState(false);
+  const [loadingBoundary, setLoadingBoundary] = useState(false);
+  const [boundaryError, setBoundaryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tab !== "boundary" || estados.length > 0) return;
+    setLoadingEstados(true);
+    fetchEstados()
+      .then(setEstados)
+      .catch((err) => setBoundaryError(err.message))
+      .finally(() => setLoadingEstados(false));
+  }, [tab, estados.length]);
+
+  useEffect(() => {
+    if (!selectedEstadoSigla) {
+      setMunicipios([]);
+      return;
+    }
+    setLoadingMunicipios(true);
+    setSelectedMunicipioId("");
+    fetchMunicipios(selectedEstadoSigla)
+      .then(setMunicipios)
+      .catch((err) => setBoundaryError(err.message))
+      .finally(() => setLoadingMunicipios(false));
+  }, [selectedEstadoSigla]);
+
+  const handleApplyEstadoBoundary = async () => {
+    const estado = estados.find((e) => e.sigla === selectedEstadoSigla);
+    if (!estado) return;
+
+    setBoundaryError(null);
+    setLoadingBoundary(true);
+    try {
+      const geometry = await fetchEstadoBoundary(estado.id);
+      const polygon: AOIPolygon = {
+        id: `IBGE-UF-${estado.sigla}`,
+        name: `${estado.nome} (${estado.sigla}) — limite oficial IBGE`,
+        fileName: "IBGE malhas territoriais",
+        geometry,
+        importedAt: new Date().toISOString(),
+      };
+      setActiveAOIPolygon(polygon);
+
+      const [[minLng, minLat], [maxLng, maxLat]] = boundaryBBox(geometry);
+      flyToLocation({ lng: (minLng + maxLng) / 2, lat: (minLat + maxLat) / 2, zoom: 6.5, pitch: 40 });
+
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+      setActiveModal(null);
+    } catch (err: any) {
+      setBoundaryError(err.message || "Falha ao carregar o limite do estado.");
+    } finally {
+      setLoadingBoundary(false);
+    }
+  };
+
+  const handleApplyMunicipioBoundary = async () => {
+    if (selectedMunicipioId === "") return;
+    const municipio = municipios.find((m) => m.id === selectedMunicipioId);
+    if (!municipio) return;
+
+    setBoundaryError(null);
+    setLoadingBoundary(true);
+    try {
+      const geometry = await fetchMunicipioBoundary(municipio.id);
+      const polygon: AOIPolygon = {
+        id: `IBGE-MUN-${municipio.id}`,
+        name: `${municipio.nome} (${selectedEstadoSigla}) — limite oficial IBGE`,
+        fileName: "IBGE malhas territoriais",
+        geometry,
+        importedAt: new Date().toISOString(),
+      };
+      setActiveAOIPolygon(polygon);
+
+      const [[minLng, minLat], [maxLng, maxLat]] = boundaryBBox(geometry);
+      flyToLocation({ lng: (minLng + maxLng) / 2, lat: (minLat + maxLat) / 2, zoom: 10, pitch: 50 });
+
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+      setActiveModal(null);
+    } catch (err: any) {
+      setBoundaryError(err.message || "Falha ao carregar o limite do município.");
+    } finally {
+      setLoadingBoundary(false);
+    }
+  };
 
   // Form State for new region request
   const [formData, setFormData] = useState({
@@ -153,7 +257,7 @@ export const RegionRequestModal: React.FC = () => {
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">Seleção de Regiões & Área de Interesse (AOI)</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Explore territórios no Paraná e Brasil, suba um polígono próprio ou solicite nova área
+                Delimite por estado, município, polígono próprio ou regiões predefinidas em todo o Brasil
               </p>
             </div>
           </div>
@@ -167,7 +271,19 @@ export const RegionRequestModal: React.FC = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-950/40 px-4 pt-2 gap-2">
+        <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-950/40 px-4 pt-2 gap-2">
+          <button
+            onClick={() => setTab("boundary")}
+            className={`pb-2.5 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
+              tab === "boundary"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-bold"
+                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+            }`}
+          >
+            <Landmark className="w-4 h-4" />
+            Estado / Município
+          </button>
+
           <button
             onClick={() => setTab("presets")}
             className={`pb-2.5 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
@@ -177,7 +293,7 @@ export const RegionRequestModal: React.FC = () => {
             }`}
           >
             <Globe className="w-4 h-4" />
-            Regiões do Paraná & Brasil
+            Regiões Predefinidas
           </button>
 
           <button
@@ -207,11 +323,156 @@ export const RegionRequestModal: React.FC = () => {
 
         {/* Tab Contents */}
         <div className="p-5 overflow-y-auto flex-1 custom-scrollbar space-y-4">
+          {/* TAB 0: ESTADO / MUNICÍPIO (limite oficial via IBGE) */}
+          {tab === "boundary" && (
+            <div className="space-y-4">
+              <div className="p-3 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl flex items-start gap-3 transition-colors">
+                <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-600 dark:text-cyan-400 shrink-0">
+                  <Landmark className="w-5 h-5" />
+                </div>
+                <div className="text-xs text-slate-600 dark:text-slate-300">
+                  <h4 className="font-bold text-slate-900 dark:text-white mb-0.5">Limite Territorial Oficial (IBGE)</h4>
+                  <p className="text-slate-500 dark:text-slate-400">
+                    Escolha um estado ou município brasileiro — o limite geográfico oficial (malha territorial do
+                    IBGE) é usado para recortar quais focos entram na triagem, da mesma forma que um polígono próprio.
+                  </p>
+                </div>
+              </div>
+
+              {/* Estado vs Município toggle */}
+              <div className="grid grid-cols-2 gap-1 bg-slate-200/70 dark:bg-slate-950 p-1 rounded-lg border border-slate-200 dark:border-slate-800">
+                <button
+                  onClick={() => setBoundaryMode("estado")}
+                  className={`py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    boundaryMode === "estado"
+                      ? "bg-cyan-600 text-white shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Por Estado
+                </button>
+                <button
+                  onClick={() => setBoundaryMode("municipio")}
+                  className={`py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    boundaryMode === "municipio"
+                      ? "bg-cyan-600 text-white shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Por Município
+                </button>
+              </div>
+
+              {/* Estado select (usado nos dois modos) */}
+              <div>
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300 block mb-1">Estado (UF)</label>
+                <div className="relative">
+                  <select
+                    value={selectedEstadoSigla}
+                    onChange={(e) => setSelectedEstadoSigla(e.target.value)}
+                    disabled={loadingEstados}
+                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg p-2.5 pr-8 appearance-none focus:outline-none focus:border-cyan-500 cursor-pointer disabled:opacity-50"
+                  >
+                    <option value="">{loadingEstados ? "Carregando estados..." : "Selecione um estado"}</option>
+                    {estados.map((e) => (
+                      <option key={e.sigla} value={e.sigla}>
+                        {e.nome} ({e.sigla})
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              {boundaryMode === "estado" ? (
+                <button
+                  onClick={handleApplyEstadoBoundary}
+                  disabled={!selectedEstadoSigla || loadingBoundary}
+                  className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-cyan-600/20"
+                >
+                  {loadingBoundary ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Landmark className="w-4 h-4" />
+                  )}
+                  Usar limite do estado selecionado
+                </button>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300 block mb-1">Município</label>
+                    <div className="relative">
+                      <select
+                        value={selectedMunicipioId}
+                        onChange={(e) => setSelectedMunicipioId(e.target.value ? Number(e.target.value) : "")}
+                        disabled={!selectedEstadoSigla || loadingMunicipios}
+                        className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg p-2.5 pr-8 appearance-none focus:outline-none focus:border-cyan-500 cursor-pointer disabled:opacity-50"
+                      >
+                        <option value="">
+                          {!selectedEstadoSigla
+                            ? "Selecione um estado primeiro"
+                            : loadingMunicipios
+                            ? "Carregando municípios..."
+                            : "Selecione um município"}
+                        </option>
+                        {municipios.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.nome}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleApplyMunicipioBoundary}
+                    disabled={selectedMunicipioId === "" || loadingBoundary}
+                    className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-cyan-600/20"
+                  >
+                    {loadingBoundary ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Landmark className="w-4 h-4" />
+                    )}
+                    Usar limite do município selecionado
+                  </button>
+                </>
+              )}
+
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-indigo-900 dark:text-indigo-200">
+                  <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span>Deseja gerar candidatos reais de visita de campo para este limite via GEE?</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal("candidates")}
+                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] rounded-lg shrink-0 transition-colors"
+                >
+                  Triar Candidatos GEE
+                </button>
+              </div>
+
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Fonte: malhas territoriais oficiais do IBGE (servicodados.ibge.gov.br). O recorte se aplica sobre os
+                pontos carregados e delimita a Área de Interesse para amostragem no Earth Engine.
+              </p>
+
+              {boundaryError && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-500/50 rounded-xl flex items-center gap-2 text-xs text-rose-800 dark:text-rose-300">
+                  <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span>{boundaryError}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* TAB 1: PRESETS */}
           {tab === "presets" && (
             <div className="space-y-3">
               <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                Selecione uma macrorregião do Paraná ou estados vizinhos para posicionamento automático da câmera 3D:
+                Selecione uma macrorregião ou bacia hidrográfica com curadoria própria para posicionamento automático da câmera 3D:
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

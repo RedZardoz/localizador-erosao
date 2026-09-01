@@ -18,6 +18,22 @@ export type ErosionFeatureType =
   | "Voçoroca em Expansão"
   | "Depressão com Escoamento Concentrado";
 
+// Origem do dado: deixa explícito, em cada ponto, o quanto se pode confiar nele.
+export type DataProvenance =
+  | "mock" // gerado por pseudo-aleatoriedade para fins de demonstração da interface
+  | "user-upload" // importado de CSV/GeoJSON/KML fornecido pelo usuário (valores como digitados no arquivo)
+  | "satellite-derived" // BSI/NDVI/declividade/RUSLE calculados sob demanda via Google Earth Engine + fontes públicas
+  | "gee-screened" // candidato triado pelo pipeline GEE (máscara de elegibilidade + estratificação + thinning)
+  | "field-validated"; // confirmado em campo (GNSS RTK / VANT / KoboToolbox)
+
+export interface RusleFactors {
+  r?: number; // Erosividade da chuva (MJ.mm/ha.h.ano) — estimada via NASA POWER + eq. Lombardi Neto
+  k?: number; // Erodibilidade do solo (t.h/ha.MJ.mm) — aproximada pela ordem pedológica (SiBCS)
+  ls?: number; // Fator topográfico comprimento-declividade (Moore & Burch / Desmet & Govers)
+  c?: number; // Fator de cobertura e manejo — derivado do NDVI/BSI
+  p?: number; // Fator de práticas conservacionistas (0.2–1.0), default 1.0 (desconhecido)
+}
+
 export interface ErosionPoint {
   id: string;
   code: string;
@@ -41,6 +57,23 @@ export interface ErosionPoint {
   detectionDate: string;
   notes?: string;
   isCustom?: boolean;
+
+  // Rastreabilidade de origem e qualidade do dado
+  dataProvenance?: DataProvenance;
+  estimatedFields?: string[]; // campos preenchidos com valor padrão/estimado (não vieram da fonte original)
+  rusleFactors?: RusleFactors;
+  geeSourceImageId?: string; // ID da cena Sentinel-2 usada no cálculo real (auditabilidade)
+  geeComputedAt?: string; // timestamp ISO do último cálculo real via GEE
+  calcEngineVersion?: string; // Versão do motor de cálculo GEE (ex: 2026-08-30-slope-projection-fix)
+
+  // Estrato amostral (README §3) quando selecionado por amostragem estratificada
+  stratumId?: string; // Ex: "A1", "A2", "A3", "B1", "B2", "B3"
+  stratumName?: string; // Descrição do estrato (ex: "Declividade 6-12% × Alta Erodibilidade")
+
+  // Preenchido quando dataProvenance === "field-validated": observações reais
+  // de campo (KoboToolbox), guardadas como vieram do formulário — README §4.1
+  fieldObservations?: Record<string, string>;
+  fieldValidatedAt?: string;
 }
 
 export interface RegionPreset {
@@ -65,6 +98,41 @@ export interface AOIPolygon {
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
   areaKm2?: number;
   importedAt: string;
+}
+
+export type PolygonCategory =
+  | "Talhão Agrícola"
+  | "Mancha de Erosão Laminar"
+  | "Sulcos / Ravina"
+  | "Área de Preservação / Palhada"
+  | "Outro";
+
+export interface DrawnPolygon {
+  id: string;
+  name: string;
+  category: PolygonCategory;
+  severity?: SeverityLevel;
+  notes?: string;
+  areaM2: number;
+  areaHa: number;
+  perimeterM: number;
+  geometry: GeoJSON.Polygon;
+  createdAt: string;
+  color?: string;
+}
+
+export interface SavedPointDataset {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  pointsCount: number;
+  points: ErosionPoint[];
+  regionName?: string;
+  aoiPolygon?: AOIPolygon | null;
+  filtersSnapshot?: FilterState;
+  source?: DataProvenance | "custom";
 }
 
 export interface NewRegionRequest {
@@ -129,3 +197,15 @@ export const RegionRequestSchema = z.object({
   requesterEmail: z.string().email("E-mail inválido"),
   sensorPreference: z.enum(["Sentinel-2", "Landsat-8/9", "Planet-NICFI", "SRTM-30m"]),
 });
+
+export type LogSeverity = "error" | "warning" | "info" | "success";
+export type LogCategory = "GEE" | "MapLibre" | "Autenticação" | "Camadas" | "Aplicação" | "Rede" | "Sistema";
+
+export interface SystemLog {
+  id: string;
+  timestamp: string;
+  severity: LogSeverity;
+  category: LogCategory;
+  message: string;
+  details?: string;
+}

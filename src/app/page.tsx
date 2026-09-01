@@ -6,7 +6,11 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { SettingsModal } from "@/components/config/SettingsModal";
 import { RegionRequestModal } from "@/components/region/RegionRequestModal";
-import { ExportModal } from "@/components/export/ExportModal";
+import { CandidateSelectionModal } from "@/components/region/CandidateSelectionModal";
+import { DataManagerModal } from "@/components/data/DataManagerModal";
+import { SystemLogsModal } from "@/components/diagnostics/SystemLogsModal";
+import { SystemLogCapture } from "@/components/diagnostics/SystemLogCapture";
+import { AuditDossierModal } from "@/components/audit/AuditDossierModal";
 import { Mountain } from "lucide-react";
 
 import { useErosionStore } from "@/lib/store/useErosionStore";
@@ -62,6 +66,9 @@ export default function HomePage() {
 
   return (
     <main className="h-screen w-screen flex flex-col overflow-hidden bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      {/* Global Background Log Capture (silent) */}
+      <SystemLogCapture />
+
       {/* Top Header */}
       <Header />
 
@@ -74,7 +81,10 @@ export default function HomePage() {
       {/* Modals & Dialogs */}
       <SettingsModal />
       <RegionRequestModal />
-      <ExportModal />
+      <CandidateSelectionModal />
+      <DataManagerModal />
+      <SystemLogsModal />
+      <AuditDossierModal />
     </main>
   );
 }

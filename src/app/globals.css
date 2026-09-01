@@ -156,14 +156,43 @@ body {
   border: 1px solid rgba(51, 65, 85, 0.8) !important;
 }
 
-/* Print styling for executive report */
+/* Print styling for executive report & scientific audit dossier */
 @media print {
   body {
     background: white !important;
     color: black !important;
     overflow: visible !important;
   }
-  header, aside, .maplibregl-control-container, .fixed {
+  header, aside, .maplibregl-control-container, .fixed:not(.printable-modal) {
+    display: none !important;
+  }
+  .printable-modal {
+    position: static !important;
+    display: block !important;
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .printable-modal-content {
+    max-width: 100% !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+  .no-print {
     display: none !important;
   }
 }
+
+/* Oculta os toasts de desenvolvimento do Next.js na tela para não obstruir o mapa */
+nextjs-portal,
+#nextjs-route-announcer,
+[data-nextjs-toast],
+[data-nextjs-dialog-overlay] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+

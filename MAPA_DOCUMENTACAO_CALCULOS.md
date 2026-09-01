@@ -68,7 +68,7 @@ Este documento estabelece o mapeamento formal entre os módulos de código-fonte
 | **`src/lib/rusle/rusleCalculator.ts`** | *Cálculo local determinístico* | `calculateSoilLossRUSLE` | **In:** $R, K, LS, C, P$<br>**Out:** $A$ [$\text{t}\cdot\text{ha}^{-1}\cdot\text{ano}^{-1}$] | **§2.5** (Equação RUSLE: $A = R \cdot K \cdot LS \cdot C \cdot P$) |
 | **`src/lib/rusle/rusleCalculator.ts`** | *Cálculo local determinístico* | `calculateCFactor` | **In:** $\text{NDVI}, \text{BSI}$<br>**Out:** Fator $C \in [0.0, 1.0]$ | **§2.1.C** ($C = ((1 - \text{NDVI})/2)^{(1 + \text{BSI})}$) |
 | **`src/lib/rusle/rusleCalculator.ts`** | *Cálculo local determinístico* | `calculateLSFactor` | **In:** $A_s$ [$\text{m}^2\cdot\text{m}^{-1}$], $\theta$ [°]<br>**Out:** Fator $LS$ adimensional | **§2.2.C** (Moore & Burch, 1986 / Desmet & Govers, 1996) |
-| **`src/lib/rusle/rusleCalculator.ts`** | *Cálculo local determinístico* | `calculateSeverity` | **In:** $S_{\%}$, $\text{BSI}$, Solo<br>**Out:** Severidade, $\Phi$ | **§3.1** ($\Phi_{\text{severidade}} = (S_{\%} \times 0.40) + (\text{BSI} \times 50.0) + \Psi_{\text{solo}}$) |
+| **`src/lib/rusle/rusleCalculator.ts`** | *Cálculo local determinístico* | `calculateSeverity` | **In:** $S$, $\text{BSI}$, Solo<br>**Out:** Severidade, $\Phi$ | **§3.1** ($\Phi_{\text{severidade}} = (S \times 0.40) + (\text{BSI} \times 50.0) + \Psi_{\text{solo}}$) |
 | **`src/lib/rusle/rusleCalculator.ts`** | *Cálculo local determinístico* | `calculatePriorityScore` | **In:** Severidade, $\text{BSI}$, $\theta$, $\epsilon$<br>**Out:** Score $\in [10, 100]$ | **§3.2** ($\text{PriorityScore} = \min(100, \max(10, \text{Round}(\Omega_{\text{base}} + \dots)))$) |
 | **`src/lib/gee/earthEngineClient.ts`** | **Google Earth Engine (GCP)** | `computeRealVariablesForPoint` | **In:** Lat, Lng, Credenciais<br>**Out:** BSI, NDVI, Cota, Declividade, Cena S2 | **§2.1.A** (Fórmula BSI), **§2.1.B** (NDVI), **§2.2.A/B** (Copernicus DEM 30m) |
 | **`src/lib/rusle/rainfallErosivity.ts`** | **NASA POWER API** *(MERRA-2)* | `estimateRainfallErosivity` | **In:** Lat, Lng<br>**Out:** Fator $R$, Chuva anual e mensal | **§2.4** (Equação de Lombardi Neto & Moldenhauer, 1992: $EI_{30} = 67.355 \cdot (p^2/P)^{0.85}$) |
@@ -115,7 +115,7 @@ $$A = R \times K \times LS \times C \times P \quad \left[\text{t}\cdot\text{ha}^
 #### A. Índice Ponderado de Severidade ($\Phi$)
 *Arquivo:* [`src/lib/rusle/rusleCalculator.ts`](file:///c:/Users/lalfr/Docs%20Fora%20do%20Ar/LUIS%20ALFREDO/01%20-%20MESTRADO%20PPGTCA%202026/02%20-%20PESQUISA%20EROS%C3%83O%20LAMINAR/localizador-erosao-parana-github/src/lib/rusle/rusleCalculator.ts) • *Referência:* README §3.1
 
-$$\Phi_{\text{severidade}} = \left( S_{\%} \times 0.40 \right) + \left( \text{BSI} \times 50.0 \right) + \Psi_{\text{solo}}$$
+$$\Phi_{\text{severidade}} = \left( S \times 0.40 \right) + \left( \text{BSI} \times 50.0 \right) + \Psi_{\text{solo}}$$
 
 * $\Psi_{\text{solo}} = 18.0$ para solos frágeis, rasos ou arenosos (Argissolos e Neossolos).
 * $\Psi_{\text{solo}} = 8.0$ para solos profundos e muito argilosos (Latossolos e Nitossolos).
@@ -134,7 +134,7 @@ $$\text{PriorityScore} = \min \left( 100, \, \max \left( 10, \, \text{Round} \le
 *Arquivos:* [`src/lib/gee/eligibilityMask.ts`](file:///c:/Users/lalfr/Docs%20Fora%20do%20Ar/LUIS%20ALFREDO/01%20-%20MESTRADO%20PPGTCA%202026/02%20-%20PESQUISA%20EROS%C3%83O%20LAMINAR/localizador-erosao-parana-github/src/lib/gee/eligibilityMask.ts) e [`src/lib/gee/stratification.ts`](file:///c:/Users/lalfr/Docs%20Fora%20do%20Ar/LUIS%20ALFREDO/01%20-%20MESTRADO%20PPGTCA%202026/02%20-%20PESQUISA%20EROS%C3%83O%20LAMINAR/localizador-erosao-parana-github/src/lib/gee/stratification.ts) • *Referência:* README §3 e §3.3
 
 1. **Uso da Terra (ESA WorldCover 10m v200):** Seleciona exclusivamente a classe $40$ (*Cropland* / Solo Agrícola) e descarta áreas florestais ($10$), pastagens naturais arbustivas ($20/30$) e manchas urbanizadas ($50$).
-2. **Relevo (Copernicus DEM GLO-30):** Filtra a janela de declividade com suscetibilidade ao escoamento superficial difuso ($3\% \le S_{\%} \le 20\%$).
+2. **Relevo (Copernicus DEM GLO-30):** Filtra a janela de declividade com suscetibilidade ao escoamento superficial difuso ($3 \le S \le 20$ %).
 3. **Buffer Hídrico (JRC Global Surface Water 1.4):** Aplica buffer morfológico de exclusão de $30\text{ metros}$ ao redor de qualquer corpo d'água superficial.
 4. **Matriz de Estratificação Cruzada (Sub-estratos A1 a B3):**
    * Sub-estratos A1, A2, A3: Alta Erodibilidade (Argissolos/Neossolos) cruzados com declividade baixa, média e alta.

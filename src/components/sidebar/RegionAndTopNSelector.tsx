@@ -10,6 +10,8 @@ import {
   PlusCircle,
   FileUp,
   ChevronDown,
+  RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { useErosionStore } from "@/lib/store/useErosionStore";
 import { regionPresets } from "@/data/regionsData";
@@ -19,11 +21,13 @@ export const RegionAndTopNSelector: React.FC = () => {
     activeRegion,
     filters,
     allPoints,
+    dataSource,
     activeAOIPolygon,
     setActiveRegion,
     setTopN,
     setActiveModal,
     setActiveAOIPolygon,
+    regenerateMockPoints,
   } = useErosionStore();
 
   const totalAvailable = allPoints.length;
@@ -95,57 +99,104 @@ export const RegionAndTopNSelector: React.FC = () => {
 
       {/* Top N Erosion Areas Selector */}
       <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-semibold text-slate-800 dark:text-slate-300 flex items-center gap-1.5">
-            <Flame className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-            Quantidade de Áreas a Triar (Top N)
-          </label>
-          <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-500/30">
-            {filters.topN >= totalAvailable || filters.topN === 0 ? "Todas (150)" : `Top ${filters.topN}`}
-          </span>
-        </div>
-
-        {/* Quick pill selectors */}
-        <div className="grid grid-cols-5 gap-1.5 mb-2.5">
-          {topNOptions.map((opt) => {
-            const isSelected =
-              opt === totalAvailable
-                ? filters.topN >= totalAvailable || filters.topN === 0
-                : filters.topN === opt;
-
-            return (
-              <button
-                key={opt}
-                onClick={() => setTopN(opt === totalAvailable ? totalAvailable : opt)}
-                className={`py-1 rounded text-[11px] font-medium transition-all ${
-                  isSelected
-                    ? "bg-amber-500 text-slate-950 font-bold shadow-sm shadow-amber-500/30"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700/60"
-                }`}
-              >
-                {opt === totalAvailable ? "Todas" : `${opt}`}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Continuous Slider */}
-        <div className="space-y-1">
-          <input
-            type="range"
-            min={5}
-            max={totalAvailable}
-            step={5}
-            value={filters.topN >= totalAvailable || filters.topN === 0 ? totalAvailable : filters.topN}
-            onChange={(e) => setTopN(Number(e.target.value))}
-            className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-          />
-          <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-            <span>5 mais críticas</span>
-            <span>75 áreas</span>
-            <span>150 focos</span>
+        {totalAvailable === 0 ? (
+          <div className="text-center py-2 space-y-2">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Nenhum ponto carregado no momento.
+            </p>
+            <button
+              onClick={() => setActiveModal("candidates")}
+              className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Selecionar Candidatos GEE
+            </button>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-800 dark:text-slate-300 flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                Quantidade de Áreas a Triar (Top N)
+              </label>
+              <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-500/30">
+                {filters.topN >= totalAvailable || filters.topN === 0 ? `Todas (${totalAvailable})` : `Top ${filters.topN}`}
+              </span>
+            </div>
+
+            {dataSource === "mock" && (
+              <button
+                onClick={regenerateMockPoints}
+                title="Gera uma nova rodada dos pontos de demonstração"
+                className="w-full mb-2.5 py-1.5 flex items-center justify-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700/60 rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Recarregar Seleção
+              </button>
+            )}
+
+            {/* Quick pill selectors */}
+            <div className="grid grid-cols-5 gap-1.5 mb-2.5">
+              {topNOptions.map((opt) => {
+                const isSelected =
+                  opt === totalAvailable
+                    ? filters.topN >= totalAvailable || filters.topN === 0
+                    : filters.topN === opt;
+
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => setTopN(opt === totalAvailable ? totalAvailable : opt)}
+                    className={`py-1 rounded text-[11px] font-medium transition-all ${
+                      isSelected
+                        ? "bg-amber-500 text-slate-950 font-bold shadow-sm shadow-amber-500/30"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700/60"
+                    }`}
+                  >
+                    {opt === totalAvailable ? "Todas" : `${opt}`}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Continuous Slider */}
+            <div className="space-y-1">
+              <input
+                type="range"
+                min={Math.min(5, totalAvailable)}
+                max={Math.max(totalAvailable, 1)}
+                step={5}
+                value={filters.topN >= totalAvailable || filters.topN === 0 ? totalAvailable : filters.topN}
+                onChange={(e) => setTopN(Number(e.target.value))}
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                <span>{Math.min(5, totalAvailable)} mais críticas</span>
+                <span>{Math.round(totalAvailable / 2)} áreas</span>
+                <span>{totalAvailable} focos</span>
+              </div>
+            </div>
+
+            {/* Custom exact count input */}
+            <div className="flex items-center gap-2 pt-2.5">
+              <label className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Quantidade exata:</label>
+              <input
+                type="number"
+                min={1}
+                max={totalAvailable}
+                value={filters.topN >= totalAvailable || filters.topN === 0 ? totalAvailable : filters.topN}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (Number.isNaN(raw)) return;
+                  const clamped = Math.max(1, Math.min(totalAvailable, raw));
+                  setTopN(clamped);
+                }}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg px-2 py-1.5 font-mono focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              />
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">de {totalAvailable}</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
