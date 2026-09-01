@@ -118,18 +118,18 @@ As métricas de relevo foram extraídas de Modelos Digitais de Elevação (MDE/D
 #### A. Altitude Ortométrica ($z$)
 Cota em metros acima do nível médio do mar (referencial vertical SIRGAS 2000 / EGM96).
 
-#### B. Declividade em Graus ($\theta$) e Porcentagem ($S\%$)
+#### B. Declividade em Graus ($\theta$) e Porcentagem ($S$)
 Calculada a partir da derivada de primeira ordem da superfície topográfica nas direções cardeais $x$ (leste-oeste) e $y$ (norte-sul):
 
 $$\theta = \arctan \left( \sqrt{ \left( \frac{\partial z}{\partial x} \right)^2 + \left( \frac{\partial z}{\partial y} \right)^2 } \right) \times \left( \frac{180}{\pi} \right)$$
 
-$$S_{\%} = \tan\left( \frac{\theta \cdot \pi}{180} \right) \times 100$$
+$$S = \tan\left( \frac{\theta \cdot \pi}{180} \right) \times 100$$
 
 - **Classes de Relevo (Embrapa):**
-  - Plano: $0\% \le S_{\%} < 3\%$
-  - Suave Ondulado: $3\% \le S_{\%} < 8\%$
-  - Ondulado: $8\% \le S_{\%} < 20\%$ (Limiar onde o escoamento superficial atinge velocidade crítica)
-  - Fortemente Ondulado / Escarpado: $S_{\%} \ge 20\%$
+  - Plano: $0 \le S < 3$ %
+  - Suave Ondulado: $3 \le S < 8$ %
+  - Ondulado: $8 \le S < 20$ % (Limiar onde o escoamento superficial atinge velocidade crítica)
+  - Fortemente Ondulado / Escarpado: $S \ge 20$ %
 
 #### C. Fator Topográfico Comprimento e Grau de Declive ($LS$)
 Representa o efeito combinado do comprimento do plano de escoamento ($L$) e da inclinação da rampa ($S$). Foi calculado pelo algoritmo bidimensional de acúmulo de fluxo distribuído de Desmet & Govers (1996) e Moore & Burch (1986):
@@ -211,7 +211,7 @@ Pedologia          ├──────────────────┼�
 
 A classificação de severidade de cada ponto é orientada por uma função de ponderação que integra a energia cinética potencial do relevo, o nível de desnudamento da superfície e a fragilidade do substrato pedológico:
 
-$$\Phi_{\text{severidade}} = \left( S_{\%} \times 0.40 \right) + \left( \text{BSI} \times 50.0 \right) + \Psi_{\text{solo}}$$
+$$\Phi_{\text{severidade}} = \left( S \times 0.40 \right) + \left( \text{BSI} \times 50.0 \right) + \Psi_{\text{solo}}$$
 
 Onde o peso pedológico $\Psi_{\text{solo}}$ atribui:
 - $\Psi_{\text{solo}} = 18.0$, para solos de textura arenosa ou rasos (Argissolos e Neossolos);
