@@ -150,6 +150,17 @@ $$\text{PriorityScore} = \min \left( 100, \, \max \left( 10, \, \text{Round} \le
 
 ---
 
+### 3.5. Auditoria Científica Sequencial e Laudo Técnico em PDF
+*Arquivos:* [`src/components/audit/AuditDossierModal.tsx`](file:///c:/Users/lalfr/Docs%20Fora%20do%20Ar/LUIS%20ALFREDO/01%20-%20MESTRADO%20PPGTCA%202026/02%20-%20PESQUISA%20EROS%C3%83O%20LAMINAR/localizador-erosao-parana-github/src/components/audit/AuditDossierModal.tsx), [`src/lib/pdf/auditPdfGenerator.ts`](file:///c:/Users/lalfr/Docs%20Fora%20do%20Ar/LUIS%20ALFREDO/01%20-%20MESTRADO%20PPGTCA%202026/02%20-%20PESQUISA%20EROS%C3%83O%20LAMINAR/localizador-erosao-parana-github/src/lib/pdf/auditPdfGenerator.ts) e [`src/app/api/gee/analyze-point/route.ts`](file:///c:/Users/lalfr/Docs%20Fora%20do%20Ar/LUIS%20ALFREDO/01%20-%20MESTRADO%20PPGTCA%202026/02%20-%20PESQUISA%20EROS%C3%83O%20LAMINAR/localizador-erosao-parana-github/src/app/api/gee/analyze-point/route.ts)
+
+* **Rastreabilidade Sentinel-2 Nível 2A (BOA):** Extrai o identificador ESA da cena (`PRODUCT_ID`), data e horário de aquisição, satélite (Sentinel-2A/2B), resolução nativa de 10m e máscara atmosférica `SCL` (descarte de sombras 3, nuvens 8/9 e cirrus 10).
+* **Auditoria da Topografia (DEM):** Reprojeção métrica EPSG:3857 do Copernicus DEM GLO-30 para cálculo conforme da declividade angular/percentual e área de contribuição específica ($A_s$) pelo HydroSHEDS 15ACC.
+* **Memória Numérica da RUSLE:** Detalha a substituição dos fatores $A = R \cdot K \cdot LS \cdot C \cdot P$ com unidades de medida oficiais e fontes primárias (NASA POWER MERRA-2 e ISRIC SoilGrids).
+* **Script Reproduzível no GEE:** Gera código JavaScript completo e auto-contido para revalidação científica no Google Earth Engine Code Editor com 1 clique de cópia.
+* **Laudo Vetorial em PDF:** Compilação no lado cliente (`jspdf`) de laudo técnico A4 diagramado em 2 páginas com tipografia vetorial, sem dependências externas de renderização.
+
+---
+
 ## 4. Segurança de Credenciais e Sessão do Earth Engine
 
 * **Sem Persistência de Chaves RSA no Navegador:** As chaves privadas (`private_key`) das Service Accounts do Google Cloud Platform **nunca** são salvas no `localStorage`, `sessionStorage` ou enviadas em requisições de consulta regulares.
@@ -162,7 +173,8 @@ $$\text{PriorityScore} = \min \left( 100, \, \max \left( 10, \, \text{Round} \le
 
 A integridade do código e a exatidão das fórmulas são validadas de forma contínua por suíte de testes unitários automatizados com **Vitest**:
 
-* **Total de Arquivos de Teste:** 15 arquivos (`*.test.ts`)
-* **Total de Testes Unitários:** 106 testes automatizados
+* **Total de Arquivos de Teste:** 17 arquivos (`*.test.ts`)
+* **Total de Testes Unitários:** 119 testes automatizados
 * **Taxa de Aprovação:** 100% de sucesso (`vitest run`)
 * **Checagem de Tipagem Estrita:** 0 erros com TypeScript (`npx tsc --noEmit`)
+* **Compilação de Produção:** Next.js 14 compilado com sucesso (`npm run build`)

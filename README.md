@@ -25,8 +25,12 @@ A plataforma web atua como o ambiente de **análise exploratória, visualizaçã
 > 3. **Segurança de Credenciais:** A autenticação com a Service Account do GEE cria uma sessão criptografada no servidor via cookie `httpOnly`, nunca persistindo a chave privada RSA no `localStorage` do navegador e nem no repositório.
 > 4. **Coleções e Projetos Salvos:** Permite salvar seleções ativas no navegador, recarregar instantaneamente com enquadramento 3D automático, ou exportar/importar arquivos de projeto `.json`.
 > 5. **Ciclo de Validação de Campo (KoboToolbox):** Importa dados de campo do KoboToolbox, casa registros por proximidade/código, marca como `field-validated` e exporta o dataset rotulado para futuro treinamento do XGBoost/SHAP.
+> 6. **Dossiê de Auditoria Científica e Laudo em PDF:** Permite auditar qualquer ponto amostral contra o Earth Engine, detalhando a sequência das 6 etapas físico-matemáticas com valores numéricos reais, gerando script reproduzível para o GEE Code Editor e exportando Laudo Técnico oficial em PDF (A4 vetorial) para revalidação por pares.
 > 
-> Detalhes técnicos e o mapeamento completo das funções e servidores estão documentados em [`MAPA_DOCUMENTACAO_CALCULOS.md`](./MAPA_DOCUMENTACAO_CALCULOS.md) e [`RELATORIO_IMPLEMENTACAO.md`](./RELATORIO_IMPLEMENTACAO.md).
+> 📚 **Manuais de Uso e Documentação Técnica:**
+> - 🚀 [**Manual de Instalação e Execução**](./MANUAL_INSTALACAO.md): Guia passo a passo de clonagem, dependências, scripts do Windows e compilação.
+> - 🧭 [**Manual de Operação e Configuração**](./MANUAL_OPERACAO.md): Guia completo e detalhado de cada ferramenta, modal, botão e parâmetro do sistema.
+> - 📐 [**Mapa de Documentação e Cálculos**](./MAPA_DOCUMENTACAO_CALCULOS.md): Mapeamento arquitetural das rotas, APIs e equações da RUSLE.
 
 ---
 
@@ -370,9 +374,19 @@ A ferramenta foi projetada para oferecer uma experiência de Sistema de Informa�
    - **CSV Científico:** Planilha contendo coordenadas em Graus Decimais (DD) e Graus-Minutos-Segundos (DMS), com todas as variáveis numéricas para modelagem estatística em R e Python;
    - **Dataset de Treinamento (XGBoost):** Exportação dedicada contendo apenas pontos validados em campo com observações e fatores biofísicos.
 
+7. **Dossiê de Auditoria Científica & Laudo em PDF (Revalidação por Pares):**
+   - **Auditoria Pontual sob Demanda:** Reconsulta em tempo real ao Google Earth Engine (`/api/gee/analyze-point`), extraindo a cena Sentinel-2 mais límpida (`PRODUCT_ID`), data exata, banda `SCL` de qualidade, BSI, NDVI e DEM Copernicus GLO-30 em projeção métrica EPSG:3857;
+   - **Tela Popup com Sequência em 6 Etapas:** Exibe a memória de cálculo completa e transparente das 6 etapas da modelagem (Satélite, Espectro, Topografia, Clima/Solo, RUSLE e Script de Revalidação);
+   - **Script Executável para Google Earth Engine:** Gera código JavaScript auto-contido com botão de cópia com 1 clique para reprodução imediata no GEE Code Editor;
+   - **Laudo Técnico Oficial em PDF (A4 Vetorial):** Compilação e download direto de documento de 2 páginas com formatação acadêmica rigorosa para publicações científicas e relatórios periciais.
+
 ---
 
 ## 7. Instalação e Execução da Plataforma
+
+> 📖 **Documentação de Instalação e Operação:**
+> - Para instruções aprofundadas de instalação e solução de problemas, consulte o [**Manual de Instalação**](./MANUAL_INSTALACAO.md).
+> - Para o guia funcional completo de todas as ferramentas e parâmetros, consulte o [**Manual de Operação**](./MANUAL_OPERACAO.md).
 
 ### Pré-requisitos
 - **Node.js**: versão 18.17.0 ou superior (Node 20+ recomendado)
