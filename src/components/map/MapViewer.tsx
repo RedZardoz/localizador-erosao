@@ -485,25 +485,27 @@ export const MapViewer: React.FC = () => {
 
     source.setData({
       type: "FeatureCollection",
-      features: filteredPoints.map((p) => ({
-        type: "Feature",
-        id: p.id,
-        properties: {
+      features: filteredPoints
+        .filter((p) => p && isFinite(Number(p.longitude)) && isFinite(Number(p.latitude)))
+        .map((p) => ({
+          type: "Feature",
           id: p.id,
-          code: p.code,
-          name: p.name,
-          municipality: p.municipality,
-          severity: p.severity,
-          slopePercent: p.slopePercent,
-          bsi: p.bsi,
-          priorityScore: p.priorityScore,
-          elevation: p.elevation,
-        },
-        geometry: {
-          type: "Point",
-          coordinates: [p.longitude, p.latitude, p.elevation],
-        },
-      })),
+          properties: {
+            id: p.id,
+            code: p.code,
+            name: p.name,
+            municipality: p.municipality,
+            severity: p.severity,
+            slopePercent: p.slopePercent,
+            bsi: p.bsi,
+            priorityScore: p.priorityScore,
+            elevation: Number(p.elevation ?? 500),
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [Number(p.longitude), Number(p.latitude)],
+          },
+        })),
     });
   }, [filteredPoints, mapLoaded]);
 

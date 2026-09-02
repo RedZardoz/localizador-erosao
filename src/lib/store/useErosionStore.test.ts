@@ -246,4 +246,83 @@ describe("useErosionStore - SavedPointDataset (Salvar e Recarregar Focos)", () =
     expect(state.activeModal).toBeNull();
     expect(state.auditDossierPoint).toBeNull();
   });
+
+  it("regenerateMockPoints restaura 150 pontos e dataSource mock mesmo estando em custom", () => {
+    // Simula mapa limpo ou modo custom
+    useErosionStore.getState().clearMap();
+    useErosionStore.setState({ dataSource: "custom", allPoints: [] });
+    expect(useErosionStore.getState().allPoints).toHaveLength(0);
+
+    // Chama regenerar pontos de demonstração
+    useErosionStore.getState().regenerateMockPoints();
+
+    const state = useErosionStore.getState();
+    expect(state.allPoints.length).toBe(150);
+    expect(state.dataSource).toBe("mock");
+    expect(state.currentMockPoints.length).toBe(150);
+    expect(state.getFilteredPoints().length).toBeGreaterThan(0);
+  });
+
+  it("importDataset adiciona à lista e imediatamente carrega os pontos no mapa", () => {
+    useErosionStore.getState().clearMap();
+    expect(useErosionStore.getState().allPoints).toHaveLength(0);
+
+    const datasetToImport: SavedPointDataset = {
+      id: "import-auto-load",
+      name: "Coleção Teste Imediata",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      pointsCount: 2,
+      points: mockSamplePoints,
+    };
+
+    useErosionStore.getState().importDataset(datasetToImport);
+
+    const state = useErosionStore.getState();
+    expect(state.savedDatasets.some((d) => d.id === "import-auto-load")).toBe(true);
+    expect(state.allPoints).toHaveLength(2);
+    expect(state.getFilteredPoints()).toHaveLength(2);
+  });
+
+  it("loadDataset sanitiza coordenadas em formato string e declividade > 100% sem filtrar pontos", () => {
+    const rawPointsWithStringsAndHighSlope: any[] = [
+      {
+        id: "P-STR-1",
+        code: "PR-STR-001",
+        name: "Ponto Coordenada String",
+        latitude: "-24.9555", // String ao invés de number
+        longitude: "-53.4555",
+        elevation: "650",
+        slopePercent: 125.5, // > 100% (escarpa rochosa)
+        bsi: 0.42,
+        severity: "Crítica",
+        municipality: "Cascavel",
+      },
+    ];
+
+    useErosionStore.setState({
+      savedDatasets: [
+        {
+          id: "ds-raw-strings",
+          name: "Dados Brutos",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          pointsCount: 1,
+          points: rawPointsWithStringsAndHighSlope as any,
+        },
+      ],
+    });
+
+    useErosionStore.getState().loadDataset("ds-raw-strings");
+
+    const state = useErosionStore.getState();
+    expect(state.allPoints).toHaveLength(1);
+    expect(typeof state.allPoints[0].latitude).toBe("number");
+    expect(state.allPoints[0].latitude).toBe(-24.9555);
+    expect(state.allPoints[0].slopePercent).toBe(125.5);
+
+    // Garante que o filtro não descarta pontos com slope > 100%
+    const filtered = state.getFilteredPoints();
+    expect(filtered).toHaveLength(1);
+  });
 });

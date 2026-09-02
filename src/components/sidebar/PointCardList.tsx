@@ -12,13 +12,14 @@ import {
   Flame,
   Sparkles,
   Bookmark,
+  RotateCcw,
 } from "lucide-react";
 import { useErosionStore, useFilteredPoints } from "@/lib/store/useErosionStore";
 import { ErosionPoint } from "@/types/erosion";
 import { getGoogleEarthWebUrl } from "@/lib/utils/geoUtils";
 
 export const PointCardList: React.FC = () => {
-  const { selectedPoint, flyToPoint, setActiveModal, savedDatasets } = useErosionStore();
+  const { selectedPoint, flyToPoint, setActiveModal, savedDatasets, loadDataset, regenerateMockPoints } = useErosionStore();
   const points = useFilteredPoints();
 
   if (points.length === 0) {
@@ -28,10 +29,19 @@ export const PointCardList: React.FC = () => {
         <div>
           <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Mapa limpo (0 focos)</h4>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto mt-1">
-            Selecione uma área e processe os candidatos via Earth Engine ou recarregue uma coleção salva.
+            Selecione uma área e processe os candidatos via Earth Engine, recarregue uma coleção salva ou use os dados de demonstração.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+          {savedDatasets.length > 0 && (
+            <button
+              onClick={() => loadDataset(savedDatasets[0].id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 rounded-lg border border-emerald-200 dark:border-emerald-800 transition-colors shadow-sm cursor-pointer"
+            >
+              <Bookmark className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              Carregar: {savedDatasets[0].name.slice(0, 18)}
+            </button>
+          )}
           <button
             onClick={() => setActiveModal("candidates")}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors shadow-sm cursor-pointer"
@@ -39,15 +49,14 @@ export const PointCardList: React.FC = () => {
             <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
             Candidatos GEE
           </button>
-          {savedDatasets.length > 0 && (
-            <button
-              onClick={() => setActiveModal("saved-datasets")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 rounded-lg border border-emerald-200 dark:border-emerald-800 transition-colors shadow-sm cursor-pointer"
-            >
-              <Bookmark className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              Recarregar Salvos ({savedDatasets.length})
-            </button>
-          )}
+          <button
+            onClick={regenerateMockPoints}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-sm cursor-pointer"
+            title="Carregar amostragem de demonstração do Paraná"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
+            Demonstração (150)
+          </button>
         </div>
       </div>
     );

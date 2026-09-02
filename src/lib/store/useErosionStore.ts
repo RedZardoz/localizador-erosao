@@ -170,7 +170,7 @@ interface ErosionStoreState {
 const initialFilters: FilterState = {
   searchQuery: "",
   minSlope: 0,
-  maxSlope: 100,
+  maxSlope: 500, // Permite escarpas e declividades acentuadas (>100%) sem ocultar pontos
   minBsi: -1.0,
   maxBsi: 1.0,
   selectedSeverities: ["Moderada", "Alta", "Crítica"],
@@ -185,11 +185,11 @@ const initialFilters: FilterState = {
 export const useErosionStore = create<ErosionStoreState>()(
   persist(
     (set, get) => ({
-      // Data state (Tela limpa por padrão - pontos adicionados após GEE ou importação)
-      allPoints: [],
-      dataSource: "custom",
+      // Data state (inicia com pontos de demonstração para nunca abrir com tela vazia caso não haja dados salvos)
+      allPoints: mockErosionPoints,
+      dataSource: "mock",
       customPoints: [],
-      currentMockPoints: [],
+      currentMockPoints: mockErosionPoints,
       selectedPoint: null,
       activeRegion: regionPresets[0],
       activeAOIPolygon: null,
@@ -394,19 +394,21 @@ export const useErosionStore = create<ErosionStoreState>()(
           selectedPoint: state.selectedPoint?.id === pointId ? null : state.selectedPoint,
         })),
 
-      // "Recarregar Seleção": gera uma nova rodada dos 150 pontos de
-      // demonstração (mesma distribuição geográfica por município, novo
-      // jitter/atributos) — usado quando um ou mais pontos sintéticos caem
-      // em locais inadequados. Só afeta a base "mock"; dados customizados
-      // (upload/GEE/campo) não são tocados.
+      // "Recarregar Seleção" / "Restaurar Focos da Região": gera uma nova rodada dos 150 pontos de
+      // demonstração (distribuição geográfica por município no Paraná) e garante que sejam exibidos no mapa.
       regenerateMockPoints: () =>
         set((state) => {
           const seedOffset = Date.now() % 100000;
           const regenerated = generate150MockErosionPoints(seedOffset);
           return {
             currentMockPoints: regenerated,
-            allPoints: state.dataSource === "mock" ? regenerated : state.allPoints,
-            selectedPoint: state.dataSource === "mock" ? null : state.selectedPoint,
+            allPoints: regenerated,
+            dataSource: "mock",
+            selectedPoint: null,
+            filters: {
+              ...initialFilters,
+              topN: Math.max(initialFilters.topN, regenerated.length),
+            },
           };
         }),
 
@@ -493,46 +495,98 @@ export const useErosionStore = create<ErosionStoreState>()(
         const target = state.savedDatasets.find((d) => d.id === datasetId);
         if (!target || !target.points || target.points.length === 0) return;
 
-        const points = target.points;
+        // Sanitiza todos os pontos para garantir números reais, integridade e ausência de NaNs
+        const points: ErosionPoint[] = target.points
+          .filter((p) => p && typeof p.latitude !== "undefined" && typeof p.longitude !== "undefined")
+          .map((p, idx) => ({
+            ...p,
+            id: p.id || `POINT-${idx + 1}`,
+            code: p.code || `PR-PONT-${String(idx + 1).padStart(3, "0")}`,
+            name: p.name || `Ponto ${idx + 1}`,
+            latitude: Number(p.latitude),
+            longitude: Number(p.longitude),
+            elevation: Number(p.elevation ?? 500),
+            slopePercent: Number(p.slopePercent ?? 15),
+            slopeDegrees: Number(p.slopeDegrees ?? 8.5),
+            bsi: Number(p.bsi ?? 0.3),
+            ndvi: Number(p.ndvi ?? 0.35),
+            severity: (p.severity || "Alta") as SeverityLevel,
+            priorityScore: Number(p.priorityScore ?? 60),
+            estimatedSoilLoss: Number(p.estimatedSoilLoss ?? 20),
+            municipality: p.municipality || target.regionName || "Paraná",
+            state: p.state || "PR",
+            macroRegion: p.macroRegion || "Paraná",
+            watershed: p.watershed || "Bacia Local",
+            soilType: p.soilType || "Latossolo Vermelho",
+            featureType: p.featureType || "Erosão Laminar",
+            detectionDate: p.detectionDate || new Date().toISOString().slice(0, 10),
+          }));
+
+        if (points.length === 0) return;
+
+        // Determina a região associada se houver correspondência
+        let matchedRegion = state.activeRegion;
+        if (target.regionName) {
+          const found = regionPresets.find(
+            (r) =>
+              r.name.toLowerCase() === target.regionName?.toLowerCase() ||
+              r.id.toLowerCase() === target.regionName?.toLowerCase()
+          );
+          if (found) matchedRegion = found;
+        }
+
+        const isMock = target.source === "mock" || points[0]?.dataProvenance === "mock";
+
         set((prev) => ({
           allPoints: points,
-          customPoints: points,
-          dataSource: "custom",
+          customPoints: isMock ? prev.customPoints : points,
+          currentMockPoints: isMock ? points : prev.currentMockPoints,
+          dataSource: isMock ? "mock" : "custom",
+          activeRegion: matchedRegion,
           activeAOIPolygon: target.aoiPolygon || null,
           selectedPoint: null,
           activeModal: null,
           filters: {
-            ...prev.filters,
+            ...initialFilters,
             searchQuery: "",
             selectedWatersheds: [],
             minSlope: 0,
-            maxSlope: 100,
+            maxSlope: 500,
             minBsi: -1.0,
             maxBsi: 1.0,
             selectedSeverities: ["Moderada", "Alta", "Crítica"],
-            topN: Math.max(prev.filters.topN, points.length, 500),
+            topN: Math.max(initialFilters.topN, points.length, 500),
           },
         }));
 
-        // Auto-fly to frame the points
-        if (points.length > 0) {
-          let minLat = 90;
-          let maxLat = -90;
-          let minLng = 180;
-          let maxLng = -180;
-          for (const p of points) {
+        // Auto-fly seguro para enquadrar os pontos no mapa
+        let minLat = 90;
+        let maxLat = -90;
+        let minLng = 180;
+        let maxLng = -180;
+        for (const p of points) {
+          if (isFinite(p.latitude) && isFinite(p.longitude)) {
             if (p.latitude < minLat) minLat = p.latitude;
             if (p.latitude > maxLat) maxLat = p.latitude;
             if (p.longitude < minLng) minLng = p.longitude;
             if (p.longitude > maxLng) maxLng = p.longitude;
           }
-          state.flyToLocation({
+        }
+
+        if (minLat <= maxLat && minLng <= maxLng && minLat < 90) {
+          get().flyToLocation({
             lat: (minLat + maxLat) / 2,
             lng: (minLng + maxLng) / 2,
             zoom: points.length > 50 ? 7.5 : 11,
             pitch: 45,
           });
         }
+
+        get().addSystemLog({
+          severity: "info",
+          category: "Aplicação",
+          message: `Coleção "${target.name}" (${points.length} focos) carregada no mapa com sucesso.`,
+        });
       },
 
       deleteDataset: (datasetId) => {
@@ -556,6 +610,9 @@ export const useErosionStore = create<ErosionStoreState>()(
         set((prev) => ({
           savedDatasets: [imported, ...prev.savedDatasets.filter((d) => d.id !== id)],
         }));
+
+        // Carrega imediatamente a coleção importada no mapa
+        get().loadDataset(id);
       },
 
       // Drawn Polygons & Talhões actions
@@ -725,41 +782,57 @@ export const useErosionStore = create<ErosionStoreState>()(
         const { allPoints, filters, activeAOIPolygon, dataSource } = get();
 
         let result = allPoints.filter((pt) => {
+          if (!pt) return false;
+
           // Search query (id, name, municipality, watershed, soil)
-          if (filters.searchQuery.trim()) {
+          if (filters.searchQuery && filters.searchQuery.trim()) {
             const q = filters.searchQuery.toLowerCase();
             const match =
-              pt.name.toLowerCase().includes(q) ||
-              pt.code.toLowerCase().includes(q) ||
-              pt.municipality.toLowerCase().includes(q) ||
-              pt.watershed.toLowerCase().includes(q) ||
-              pt.soilType.toLowerCase().includes(q) ||
-              pt.featureType.toLowerCase().includes(q);
+              (pt.name || "").toLowerCase().includes(q) ||
+              (pt.code || "").toLowerCase().includes(q) ||
+              (pt.municipality || "").toLowerCase().includes(q) ||
+              (pt.watershed || "").toLowerCase().includes(q) ||
+              (pt.soilType || "").toLowerCase().includes(q) ||
+              (pt.featureType || "").toLowerCase().includes(q);
             if (!match) return false;
           }
 
-          // Slope (%)
-          if (pt.slopePercent < filters.minSlope || pt.slopePercent > filters.maxSlope) {
-            return false;
+          // Slope (%) - tolera declividades acentuadas e ausentes
+          if (typeof pt.slopePercent === "number" && !isNaN(pt.slopePercent)) {
+            if (pt.slopePercent < filters.minSlope || pt.slopePercent > filters.maxSlope) {
+              return false;
+            }
           }
 
           // BSI (-1 to 1)
-          if (pt.bsi < filters.minBsi || pt.bsi > filters.maxBsi) {
-            return false;
+          if (typeof pt.bsi === "number" && !isNaN(pt.bsi)) {
+            if (pt.bsi < filters.minBsi || pt.bsi > filters.maxBsi) {
+              return false;
+            }
           }
 
-          // Severity
-          if (filters.selectedSeverities.length > 0 && !filters.selectedSeverities.includes(pt.severity)) {
-            return false;
+          // Severity (Tolerância a acentos, minúsculo ou Baixa)
+          if (filters.selectedSeverities && filters.selectedSeverities.length > 0) {
+            const s = (pt.severity || "").toLowerCase().trim();
+            const matchesSeverity = filters.selectedSeverities.some((sel) => {
+              const selLower = sel.toLowerCase();
+              return selLower === s || (selLower === "crítica" && s === "critica");
+            });
+            // Se o ponto tiver severidade categorizada nos 3 níveis e não bater com as selecionadas, filtra
+            if (pt.severity && !matchesSeverity && ["moderada", "alta", "crítica", "critica"].includes(s)) {
+              return false;
+            }
           }
 
           // Watershed
-          if (filters.selectedWatersheds.length > 0 && !filters.selectedWatersheds.includes(pt.watershed)) {
-            return false;
+          if (filters.selectedWatersheds && filters.selectedWatersheds.length > 0) {
+            if (pt.watershed && !filters.selectedWatersheds.includes(pt.watershed)) {
+              return false;
+            }
           }
 
           // Spatial clip inside active AOI polygon only for mock demonstration data
-          if (activeAOIPolygon && dataSource === "mock") {
+          if (activeAOIPolygon && dataSource === "mock" && activeAOIPolygon.geometry) {
             const inside = isPointInGeoJSON(pt.latitude, pt.longitude, activeAOIPolygon.geometry);
             if (!inside) return false;
           }
@@ -767,27 +840,27 @@ export const useErosionStore = create<ErosionStoreState>()(
           return true;
         });
 
-        // Sorting
+        // Sorting seguro sem exceções
         result.sort((a, b) => {
           let comparison = 0;
           switch (filters.sortBy) {
             case "priority":
-              comparison = a.priorityScore - b.priorityScore;
+              comparison = (a.priorityScore ?? 0) - (b.priorityScore ?? 0);
               break;
             case "bsi":
-              comparison = a.bsi - b.bsi;
+              comparison = (a.bsi ?? 0) - (b.bsi ?? 0);
               break;
             case "slope":
-              comparison = a.slopePercent - b.slopePercent;
+              comparison = (a.slopePercent ?? 0) - (b.slopePercent ?? 0);
               break;
             case "soilLoss":
-              comparison = a.estimatedSoilLoss - b.estimatedSoilLoss;
+              comparison = (a.estimatedSoilLoss ?? 0) - (b.estimatedSoilLoss ?? 0);
               break;
             case "municipality":
-              comparison = a.municipality.localeCompare(b.municipality);
+              comparison = (a.municipality || "").localeCompare(b.municipality || "");
               break;
             default:
-              comparison = a.priorityScore - b.priorityScore;
+              comparison = (a.priorityScore ?? 0) - (b.priorityScore ?? 0);
           }
           return filters.sortOrder === "desc" ? -comparison : comparison;
         });
@@ -823,6 +896,7 @@ export const useErosionStore = create<ErosionStoreState>()(
         drawnPolygons: state.drawnPolygons,
         allPoints: state.allPoints,
         customPoints: state.customPoints,
+        dataSource: state.dataSource,
         activeAOIPolygon: state.activeAOIPolygon,
         regionRequests: state.regionRequests,
         theme: state.theme,
@@ -836,6 +910,20 @@ export const useErosionStore = create<ErosionStoreState>()(
           flyToTarget: null,
         },
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        // Se após reidratação do localStorage o mapa estiver vazio mas existirem coleções salvas,
+        // carrega automaticamente a coleção mais recente para que o mapa nunca abra zerado
+        if (state.allPoints.length === 0 && state.savedDatasets && state.savedDatasets.length > 0) {
+          const latest = state.savedDatasets[0];
+          state.loadDataset(latest.id);
+        } else if (state.allPoints.length === 0 && (!state.savedDatasets || state.savedDatasets.length === 0)) {
+          // Se não há coleções salvas nem pontos, inicializa com a base demonstrativa do Paraná
+          state.allPoints = mockErosionPoints;
+          state.currentMockPoints = mockErosionPoints;
+          state.dataSource = "mock";
+        }
+      },
     }
   )
 );

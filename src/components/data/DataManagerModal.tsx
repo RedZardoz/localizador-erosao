@@ -43,6 +43,7 @@ import {
   exportPointsToShapefileZip,
 } from "@/lib/utils/shapefileExport";
 import { parseAndMatchKoboExport, KoboMatchResult } from "@/lib/utils/koboParser";
+import { parseCSV, parseGeoJSON, parseKML, parseKMZ } from "@/lib/utils/parsers";
 
 export type DataManagerTab = "points" | "polygons" | "export";
 
@@ -63,6 +64,8 @@ export const DataManagerModal: React.FC = () => {
     flyToLocation,
     clearDrawnPolygons,
     activeAOIPolygon,
+    setActiveAOIPolygon,
+    setCustomPoints,
     activeRegion,
     updatePointWithRealData,
     applyCandidatePoints,
@@ -145,48 +148,74 @@ export const DataManagerModal: React.FC = () => {
     setImportSuccess(null);
 
     try {
-      const text = await file.text();
+      const fileNameLower = file.name.toLowerCase();
 
-      if (file.name.endsWith(".json") || file.name.endsWith(".geojson")) {
+      if (fileNameLower.endsWith(".json") || fileNameLower.endsWith(".geojson")) {
+        const text = await file.text();
         const json = JSON.parse(text);
+
         if (json.points && Array.isArray(json.points)) {
+          // Arquivo de coleção/projeto do Localizador de Erosão
           importDataset(json);
-          setImportSuccess(`Projeto "${json.name || file.name}" importado com sucesso!`);
-        } else if (json.type === "FeatureCollection" && Array.isArray(json.features)) {
-          const importedPts = json.features
-            .filter((f: any) => f.geometry?.type === "Point")
-            .map((f: any, idx: number) => ({
-              id: f.id || `IMPORT-${Date.now()}-${idx}`,
-              code: f.properties?.code || `IMP-${idx + 1}`,
-              name: f.properties?.name || `Ponto Importado ${idx + 1}`,
-              latitude: f.geometry.coordinates[1],
-              longitude: f.geometry.coordinates[0],
-              elevation: f.geometry.coordinates[2] || f.properties?.elevation_m || 500,
-              slopePercent: f.properties?.slopePercent || 10,
-              slopeDegrees: f.properties?.slopeDegrees || 5.7,
-              bsi: f.properties?.bsi || 0.3,
-              ndvi: f.properties?.ndvi || 0.4,
-              municipality: f.properties?.municipality || activeRegion.name,
-              state: f.properties?.state || activeRegion.state,
-              macroRegion: f.properties?.macroRegion || "Paraná",
-              watershed: f.properties?.watershed || "Bacia Hidrográfica",
-              soilType: f.properties?.soilType || "Latossolo Vermelho",
-              featureType: f.properties?.featureType || "Erosão Laminar",
-              severity: f.properties?.severity || "Alta",
-              estimatedSoilLoss: f.properties?.estimatedSoilLoss || 25,
-              priorityScore: f.properties?.priorityScore || 65,
-              detectionDate: f.properties?.detectionDate || new Date().toISOString().split("T")[0],
-              notes: f.properties?.notes || "Importado via GeoJSON",
-              dataProvenance: "user-imported",
-            }));
-          if (importedPts.length > 0) {
-            applyCandidatePoints(importedPts, false);
-            setImportSuccess(`${importedPts.length} pontos GeoJSON importados com sucesso!`);
-          } else {
-            throw new Error("Nenhum ponto válido encontrado no arquivo GeoJSON.");
-          }
+          setImportSuccess(`Coleção "${json.name || file.name}" (${json.points.length} focos) importada e carregada no mapa!`);
+          setTimeout(() => setActiveModal(null), 1400);
+          return;
         }
-      } else if (file.name.endsWith(".csv")) {
+
+        // Se for GeoJSON com features
+        const parsed = parseGeoJSON(json, file.name);
+        if (parsed.points && parsed.points.length > 0) {
+          setCustomPoints(parsed.points);
+          saveDataset(`Importação GeoJSON - ${file.name}`, `Importado em ${new Date().toLocaleDateString("pt-BR")}`);
+          if (parsed.polygons && parsed.polygons.length > 0) {
+            setActiveAOIPolygon(parsed.polygons[0]);
+          }
+          if (parsed.summary.bounds) {
+            const [[minLng, minLat], [maxLng, maxLat]] = parsed.summary.bounds;
+            flyToLocation({
+              lat: (minLat + maxLat) / 2,
+              lng: (minLng + maxLng) / 2,
+              zoom: parsed.points.length > 50 ? 7.5 : 11,
+              pitch: 45,
+            });
+          }
+          setImportSuccess(`${parsed.points.length} focos importados do GeoJSON e exibidos no mapa!`);
+          setTimeout(() => setActiveModal(null), 1400);
+          return;
+        } else if (parsed.polygons && parsed.polygons.length > 0) {
+          setActiveAOIPolygon(parsed.polygons[0]);
+          setImportSuccess(`Polígono AOI "${parsed.polygons[0].name}" carregado com sucesso!`);
+          return;
+        } else {
+          throw new Error("Nenhum ponto ou polígono válido encontrado no arquivo GeoJSON.");
+        }
+      } else if (fileNameLower.endsWith(".csv")) {
+        const text = await file.text();
+
+        // Tenta primeiro importar como CSV de pontos de erosão
+        try {
+          const parsedCsv = await parseCSV(text, file.name);
+          if (parsedCsv.points && parsedCsv.points.length > 0) {
+            setCustomPoints(parsedCsv.points);
+            saveDataset(`Importação CSV - ${file.name}`, `Importado em ${new Date().toLocaleDateString("pt-BR")}`);
+            if (parsedCsv.summary.bounds) {
+              const [[minLng, minLat], [maxLng, maxLat]] = parsedCsv.summary.bounds;
+              flyToLocation({
+                lat: (minLat + maxLat) / 2,
+                lng: (minLng + maxLng) / 2,
+                zoom: parsedCsv.points.length > 50 ? 7.5 : 11,
+                pitch: 45,
+              });
+            }
+            setImportSuccess(`${parsedCsv.points.length} focos importados do CSV e exibidos no mapa!`);
+            setTimeout(() => setActiveModal(null), 1400);
+            return;
+          }
+        } catch {
+          // Se não tiver colunas de coordenadas de pontos, tenta compatibilização com KoboToolbox
+        }
+
+        // Fallback: pareamento de campo KoboToolbox
         const koboRes = parseAndMatchKoboExport(text, allPoints);
         if (koboRes.matched.length > 0) {
           koboRes.matched.forEach((m: KoboMatchResult) => {
@@ -198,7 +227,49 @@ export const DataManagerModal: React.FC = () => {
           });
           setImportSuccess(`${koboRes.matched.length} pontos casados e validados com observações do KoboToolbox!`);
         } else {
-          setImportError("Planilha CSV processada, mas nenhum ponto coincidiu por código ou proximidade (150m).");
+          setImportError("Planilha CSV processada, mas não contém colunas de coordenadas (lat/lng) nem coincidiu com focos existentes via KoboToolbox.");
+        }
+      } else if (fileNameLower.endsWith(".kml")) {
+        const text = await file.text();
+        const parsedKml = parseKML(text, file.name);
+        if (parsedKml.points && parsedKml.points.length > 0) {
+          setCustomPoints(parsedKml.points);
+          saveDataset(`Importação KML - ${file.name}`, `Importado em ${new Date().toLocaleDateString("pt-BR")}`);
+          if (parsedKml.summary.bounds) {
+            const [[minLng, minLat], [maxLng, maxLat]] = parsedKml.summary.bounds;
+            flyToLocation({
+              lat: (minLat + maxLat) / 2,
+              lng: (minLng + maxLng) / 2,
+              zoom: parsedKml.points.length > 50 ? 7.5 : 11,
+              pitch: 45,
+            });
+          }
+          setImportSuccess(`${parsedKml.points.length} focos importados do KML e exibidos no mapa!`);
+          setTimeout(() => setActiveModal(null), 1400);
+        } else if (parsedKml.polygons && parsedKml.polygons.length > 0) {
+          setActiveAOIPolygon(parsedKml.polygons[0]);
+          setImportSuccess(`Polígono AOI "${parsedKml.polygons[0].name}" carregado com sucesso!`);
+        }
+      } else if (fileNameLower.endsWith(".kmz")) {
+        const buffer = await file.arrayBuffer();
+        const parsedKmz = await parseKMZ(buffer, file.name);
+        if (parsedKmz.points && parsedKmz.points.length > 0) {
+          setCustomPoints(parsedKmz.points);
+          saveDataset(`Importação KMZ - ${file.name}`, `Importado em ${new Date().toLocaleDateString("pt-BR")}`);
+          if (parsedKmz.summary.bounds) {
+            const [[minLng, minLat], [maxLng, maxLat]] = parsedKmz.summary.bounds;
+            flyToLocation({
+              lat: (minLat + maxLat) / 2,
+              lng: (minLng + maxLng) / 2,
+              zoom: parsedKmz.points.length > 50 ? 7.5 : 11,
+              pitch: 45,
+            });
+          }
+          setImportSuccess(`${parsedKmz.points.length} focos importados do KMZ e exibidos no mapa!`);
+          setTimeout(() => setActiveModal(null), 1400);
+        } else if (parsedKmz.polygons && parsedKmz.polygons.length > 0) {
+          setActiveAOIPolygon(parsedKmz.polygons[0]);
+          setImportSuccess(`Polígono AOI "${parsedKmz.polygons[0].name}" carregado com sucesso!`);
         }
       }
     } catch (err: any) {
@@ -398,7 +469,7 @@ export const DataManagerModal: React.FC = () => {
               type="file"
               ref={fileInputRef}
               onChange={handleImportFile}
-              accept=".json,.geojson,.csv,.kml"
+              accept=".json,.geojson,.csv,.kml,.kmz"
               className="hidden"
             />
             <button
@@ -547,7 +618,7 @@ export const DataManagerModal: React.FC = () => {
                             </p>
                           </div>
                           <span className="text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded shrink-0">
-                            {ds.points.length} focos
+                            {ds.points?.length ?? ds.pointsCount ?? 0} focos
                           </span>
                         </div>
 

@@ -12,6 +12,8 @@ import {
   ChevronDown,
   RefreshCw,
   Sparkles,
+  Bookmark,
+  RotateCcw,
 } from "lucide-react";
 import { useErosionStore } from "@/lib/store/useErosionStore";
 import { regionPresets } from "@/data/regionsData";
@@ -23,6 +25,8 @@ export const RegionAndTopNSelector: React.FC = () => {
     allPoints,
     dataSource,
     activeAOIPolygon,
+    savedDatasets,
+    loadDataset,
     setActiveRegion,
     setTopN,
     setActiveModal,
@@ -104,13 +108,33 @@ export const RegionAndTopNSelector: React.FC = () => {
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Nenhum ponto carregado no momento.
             </p>
-            <button
-              onClick={() => setActiveModal("candidates")}
-              className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Selecionar Candidatos GEE
-            </button>
+            {savedDatasets.length > 0 && (
+              <button
+                onClick={() => loadDataset(savedDatasets[0].id)}
+                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                title={`Carregar "${savedDatasets[0].name}"`}
+              >
+                <Bookmark className="w-3.5 h-3.5" />
+                <span>Carregar Salvos: {savedDatasets[0].name.slice(0, 20)} ({savedDatasets[0].pointsCount || savedDatasets[0].points?.length || 0})</span>
+              </button>
+            )}
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setActiveModal("candidates")}
+                className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Candidatos GEE
+              </button>
+              <button
+                onClick={regenerateMockPoints}
+                className="py-1.5 px-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                title="Restaurar focos de demonstração do Paraná"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
+                Demo (150)
+              </button>
+            </div>
           </div>
         ) : (
           <>
